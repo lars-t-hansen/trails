@@ -7,13 +7,18 @@
     <title>Trails</title>
   </head>
   <body onload="initialize()">
-    <div><center>Trails</center></div>
+    <div style="font-size: 20pt"><center>Trails</center></div> 
+    <div>&nbsp;</div>
     <div>
-      <button id="startButton" onclick="onStart()">Start</button>
-      <button id="stopButton" onclick="onStop()">Stop</button>
+      <button id="startButton" onclick="onStart()" style="width: 49%; height: 20%">Start</button>
+      <button id="stopButton" onclick="onStop()" style="width: 49%; height: 20%">Stop</button>
     </div>
+    <div>&nbsp;</div>
     <div>
-      <button id="uploadButton" onclick="onUpload()">Upload</button>
+      <button id="uploadButton" onclick="onUpload()" style="width: 100%; height: 20%">Upload</button>
     </div>
+    <div>&nbsp;</div>
+    <div>Observations: <span id="observations"></span></div>
+    <div>Elapsed time: <span id="elapsed"></span></div>
   </body>
 </html>
