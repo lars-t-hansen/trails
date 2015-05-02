@@ -19,9 +19,9 @@ A trace is JSON data:
     device:  device-name
     start:   timestamp,
     end:     timestamp,
-    readings: [[lat, long], ...] }
+    readings: [[lat, lon], ...] }
 
-lat and long are integers, multiply by 1e-7 to get actual locations.
+lat and lon are floating-point numbers, raw readings of latitude and longitude.
 
 The UUID allows duplicates to be rejected on the server, should they
 happen for any reason at all.  The uploader should delete a trace from

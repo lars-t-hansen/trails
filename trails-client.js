@@ -4,59 +4,25 @@
 
 var g_startTime;
 var g_readings;
+var g_distance;
 var g_watcher;
 var g_running;
-var g_device;
-var g_startButton;
-var g_stopButton;
-var g_uploadButton;
-var g_observations;
-var g_elapsed;
 
 function initialize() {
-    g_startButton = document.getElementById("startButton");
-    g_stopButton = document.getElementById("stopButton");
-    g_uploadButton = document.getElementById("uploadButton");
-    g_observations = document.getElementById("observations");
-    g_elapsed = document.getElementById("elapsed");
-    enable(g_startButton);
-    disable(g_stopButton);
-    (numRecords() > 0 ? enable : disable)(g_uploadButton);
-    g_device = "slartibartfast"; // FIXME
+    initDisplay();
     g_running = false;
 }
 
 function onStart() {
     g_startTime = Date.now();
     g_readings = [];
+    g_distance = 0;
     g_watcher = navigator.geolocation.watchPosition(recordPosition,
 						    () => true,
 						    { enableHighAccuracy: true });
-    g_observations.innerHTML = "";
-    g_elapsed.innerHTML = "";
-    disable(g_startButton);
-    enable(g_stopButton);
+    clearDisplay();
+    setButtons("running");
     g_running = true;
-}
-
-function encodeCoordinate(x) {
-    return Math.round(x*1e7);
-}
-
-function recordPosition(position) {
-    var lat = encodeCoordinate(position.coords.latitude);
-    var lon = encodeCoordinate(position.coords.longitude);
-    if (g_readings.length) {
-	// Prune repeated observations, could result from effects we don't
-	// care about, eg, higher precision, change in perceived accuracy.
-	var last = g_readings[g_readings.length-1];
-	if (lat == last[0] && lon == last[1])
-	    return;
-    }
-    g_readings.push([lat, lon]);
-    g_observations.innerHTML = String(g_readings.length);
-    g_elapsed.innerHTML = elapsedTimeSince(g_startTime);
-    // TODO: display rough estimate of distance?  (sum of distances between observations)
 }
 
 function onStop() {
@@ -64,34 +30,80 @@ function onStop() {
     navigator.geolocation.clearWatch(g_watcher);
     g_running = false;
     g_watcher = -1;
-    enable(g_startButton);
-    disable(g_stopButton);
     var trail =
 	{ id: makeUUID(),
 	  version: 1,
-	  device: g_device,
+	  device: deviceName(),
 	  start: g_startTime,
 	  end: endTime,
+	  distance: g_distance,
 	  readings: g_readings };
     appendRecord(JSON.stringify(trail));
     g_readings = null;
-    enable(g_uploadButton);
+    setButtons("idle");
 }
 
 function onUpload() {
-    disable(g_uploadButton);
+    disableUpload();
+    onUpload2();
+}
+
+function onUpload2() {
     if (numRecords() == 0)
 	return;
     var r = firstRecord();
     sendRecord(r,
 	       function () {
 		   deleteFirstRecord();
-		   onUpload();
+		   onUpload2();
 	       },
 	       function () {
-		   showMessage("Upload failed");
-		   (numRecords() > 0 ? enable : disable)(g_uploadButton);
+		   // FIXME: this is crude.  Why did it fail?  Did it fail for this record
+		   // or in general?
+		   showMessage("Upload failed.");
+		   enableUpload();
 	       });
+}
+
+function recordPosition(position) {
+    var lat = position.coords.latitude;
+    var lon = position.coords.longitude;
+    if (g_readings.length) {
+	// Prune repeated observations, could result from effects we don't
+	// care about, eg, higher precision, change in perceived accuracy.
+	var last = g_readings[g_readings.length-1];
+	if (lat == last[0] && lon == last[1])
+	    return;
+
+	// Estimate distance.  Point-by-point is not the best we can do;
+	// if several observations are more or less on a line then we can
+	// also do the endpoints.
+	g_distance += distanceBetween(last[0], last[1], lat, lon);
+    }
+    g_readings.push([lat, lon]);
+    updateDisplay();
+}
+
+// http://en.wikipedia.org/wiki/Great-circle_distance
+// http://en.wikipedia.org/wiki/Earth_radius
+
+const earth_avg_radius = 6371009.0;	// meters
+
+function distanceBetween(lat_a, lon_a, lat_b, lon_b) {
+    // Convert to radians
+    lat_a = (lat_a / 180) * Math.PI;
+    lon_a = (lon_a / 180) * Math.PI;
+    lat_b = (lat_b / 180) * Math.PI;
+    lon_b = (lon_b / 180) * Math.PI;
+    //var delta_lat = Math.abs(lat_a - lat_b);
+    var delta_lon = Math.abs(lon_a - lon_b);
+    // TODO:
+    // This formula may be subject to a little accuracy loss, see first reference
+    // above for adjustments that can be made.
+    var central_angle = Math.acos(Math.sin(lat_a) * Math.sin(lat_b) + Math.cos(lat_a) * Math.cos(lat_b) * Math.cos(delta_lon));
+    // TODO:
+    // We can probably use a radius that is better adapted to the latitude.
+    return earth_avg_radius * central_angle;
 }
 
 function sendRecord(r, onSuccess, onFailure) {
@@ -103,6 +115,62 @@ function sendRecord(r, onSuccess, onFailure) {
 function makeUUID() {
     // Hack
     return Math.round(Math.random()*Date.now()).toString(16);
+}
+
+//////////////////////////////////////////////////////////////////////
+//
+// Display code.
+
+var g_display;
+
+function initDisplay() {
+    g_display = {
+	startButton: document.getElementById("startButton"),
+	stopButton: document.getElementById("stopButton"),
+	uploadButton: document.getElementById("uploadButton"),
+	observations: document.getElementById("observations"),
+	elapsed: document.getElementById("elapsed"),
+	distance: document.getElementById("distance")
+    };
+    setButtons("idle");
+}
+
+function setButtons(state) {
+    switch (state) {
+    case "idle":
+	enable(g_display.startButton);
+	disable(g_display.stopButton);
+	break;
+    case "running":
+	disable(g_display.startButton);
+	enable(g_display.stopButton);
+    }
+    enableUpload();
+}
+
+function disableUpload() {
+    disable(g_display.uploadButton);
+}
+
+function enableUpload() {
+    (numRecords() > 0 ? enable : disable)(g_display.uploadButton);
+}
+
+function clearDisplay() {
+    g_display.observations.innerHTML = "";
+    g_display.elapsed.innerHTML = "";
+    g_display.distance.innerHTML = "";
+}
+
+function updateDisplay() {
+    g_display.observations.innerHTML = g_readings.length;
+    g_display.elapsed.innerHTML = elapsedTimeSince(g_startTime);
+    if (g_distance > 0) {
+	if (g_distance < 1000)
+	    g_display.distance.innerHTML = Math.round(g_distance) + "m";
+	else
+	    g_display.distance.innerHTML = (Math.round(g_distance / 10)/100) + "km";
+    }
 }
 
 function enable(button) {
@@ -138,7 +206,35 @@ function elapsedTimeSince(t) {
     return x;
 }
 
-// Simple database abstraction, stores a sequence of strings.
+//////////////////////////////////////////////////////////////////////
+//
+// Preferences.
+
+var g_device;
+var g_userid;
+var g_passwd;
+
+function deviceName() {
+    if (!g_device)
+	g_device = "slartibartfast"; // FIXME
+    return g_device;
+}
+
+function userId() {
+    if (!g_userid)
+	g_userid = "lth";	// FIXME
+    return g_userid;
+}
+
+function password() {
+    if (!g_passwd)
+	g_passwd = "qumquat";	// FIXME
+    return g_passwd;
+}
+
+//////////////////////////////////////////////////////////////////////
+//
+// Persistent store of pending upload records.
 //
 // Not actually safe against multiple concurrent clients on the same system
 // since firstKey and nextKey are not updated atomically.  A "lock" property
