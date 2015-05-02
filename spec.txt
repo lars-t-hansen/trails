@@ -1,0 +1,39 @@
+Lightweight location tracker to run on a cell phone, it records a path using not too much power.
+Saves to disk.  Uploads at the press of a button.  Minimal UI.
+
+The central idea is a trail: the sequence of readings while app is tracking.
+
+Server stores trails and uses OSM data to compute distance, time, etc, there is little client-side work.
+
+Server provides a web app to interact with database of trails (maps, stats).
+
+
+Step 1: record traces and upload them.  Uploader has a REST API.
+
+POST /new/USER/PASS
+
+A trace is JSON data:
+
+  { id:      UUID
+    version: 1
+    device:  device-name
+    start:   timestamp,
+    end:     timestamp,
+    readings: [[lat, long], ...] }
+
+lat and long are integers, multiply by 1e-7 to get actual locations.
+
+The UUID allows duplicates to be rejected on the server, should they
+happen for any reason at all.  The uploader should delete a trace from
+its database only when it receives a successful response from the POST.
+
+Response codes:
+
+  OK
+  DUPLICATE - if UUID existed but data was the same
+  CONFLICT - if UUID existed and data was not the same
+
+The server should just create a new file, named perhaps new-UUID.data, if
+the response is OK.  Server code can later process these files.
+
+The server should be single-threaded, at least on a per-user basis.
