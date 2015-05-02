@@ -29,7 +29,9 @@ function initialize() {
 function onStart() {
     g_startTime = Date.now();
     g_readings = [];
-    g_watcher = navigator.geolocation.watchPosition(recordPosition);
+    g_watcher = navigator.geolocation.watchPosition(recordPosition,
+						    () => true,
+						    { enableHighAccuracy: true });
     g_observations.innerHTML = "";
     g_elapsed.innerHTML = "";
     disable(g_startButton);
@@ -170,7 +172,7 @@ function deleteFirstRecord() {
 function initDatabase() {
     if (g_db)
 	return;
-    g_db = sessionStorage;	// localStorage, really
+    g_db = localStorage;
     var probe = g_db.getItem("nextKey");
     if (!probe) {
 	g_db.setItem("firstKey", "0");
