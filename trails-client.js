@@ -7,6 +7,7 @@ var g_readings;
 var g_distance;
 var g_watcher;
 var g_running;
+var g_server;
 
 function initialize() {
     initDisplay();
@@ -14,6 +15,7 @@ function initialize() {
 }
 
 function onStart() {
+    g_server = window.location.origin;
     g_startTime = Date.now();
     g_readings = [];
     g_distance = 0;
@@ -108,9 +110,13 @@ function distanceBetween(lat_a, lon_a, lat_b, lon_b) {
 }
 
 function sendRecord(r, onSuccess, onFailure) {
-    // FIXME: XHR send to the server
-    alert(r);
-    onSuccess();
+    var req = new XMLHttpRequest();
+    req.onload = function (ev) { onSuccess(); }; // TODO: response codes!
+    req.onerror = function (ev) { onFailure() };
+    req.onabort = function (ev) { onFailure() };
+    req.open("post", g_server + "/trail/" + userName() + "/" + encodeURIComponent(password()));
+    req.overrideMimeType("application/json");
+    req.send(r);
 }
 
 function makeUUID() {

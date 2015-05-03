@@ -6,6 +6,10 @@
 
 // Protocol:
 //
+// GET /r/FILENAME
+//   Respond 200 OK with the named file if it exists.
+//   Note, this is for static resources.
+//
 // POST /trail/USER-ID/PASSWD
 //   Payload: the contents of the trail, a JSON object as outlined in
 //     spec.txt, notably with a UUID field.
@@ -23,8 +27,9 @@ var fs = require('fs');
 //////////////////////////////////////////////////////////////////////
 // Configuration
 
-var g_datadir = "/home/lth/src/trails-server/"; // FIXME
-var g_port = 1338;
+var g_datadir = "/home/lth/src/trails-server/"; // CONFIGUREME
+var g_port = 9003;
+var g_default = "trails.html";
 
 //////////////////////////////////////////////////////////////////////
 // Globals
@@ -44,10 +49,24 @@ function runServer() {
 const user_id = "[a-zA-Z0-9]+";
 const passwd = "[-_.!~*'()a-zA-Z0-9]+";
 const post_trail_re = new RegExp("^\\/trail\\/(" + user_id + ")\\/(" + passwd + ")$");
+const filename = "[-_a-zA-Z0-9.]+";
+const resource_re = new RegExp("^\\/r\\/(" + filename + ")$");
+const default_re = new RegExp("^\\/?$");
 
 function requestHandler(req, res) {
     var m, user, passwd
     switch (req.method) {
+    case 'GET':
+	// Must serve up the app files, at least.
+	if ((m = req.url.match(resource_re)) && (fn = resourceFile(m[1]))) {
+	    serveFile(res, fn);
+	    return;
+	}
+	if ((m = req.url.match(default_re)))
+	    serveFile(res, resourceFile(g_default));
+	    return;
+	}
+	break;
     case 'POST':
 	if ((m = req.url.match(post_trail_re)) && (user = m[1]) && (passwd = decodeURIComponent(m2))) {
 	    if (!checkUser(user, passwd)) {
@@ -93,9 +112,24 @@ function logError(error) {
 
 //////////////////////////////////////////////////////////////////////
 //
+// File layer.
+
+function resourceFile(base) {
+    var fn = datadir + "files/" + base;
+    return fs.existsSync(fn) ? fn : null;
+}
+
+function serveFile(res, filename) {
+    var data = fs.readFileSync(filename);
+    res.writeHead(200, {'Content-Type': mimeTypeFromName(filename)});
+    res.end(data);
+}
+
+//////////////////////////////////////////////////////////////////////
+//
 // User database.
 //
-// Surely there must exist code for this already?
+// TODO: Surely there must exist code for this already?
 
 // Format of users.dat:
 //
