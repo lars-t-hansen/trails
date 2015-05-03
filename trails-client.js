@@ -31,7 +31,7 @@ function onStop() {
     g_running = false;
     g_watcher = -1;
     var trail =
-	{ id: makeUUID(),
+	{ uuid: makeUUID(),
 	  version: 1,
 	  device: deviceName(),
 	  start: g_startTime,
@@ -99,10 +99,11 @@ function distanceBetween(lat_a, lon_a, lat_b, lon_b) {
     var delta_lon = Math.abs(lon_a - lon_b);
     // TODO:
     // This formula may be subject to a little accuracy loss, see first reference
-    // above for adjustments that can be made.
+    // above for adjustments that can be made.  But with doubles we're more or less OK.
     var central_angle = Math.acos(Math.sin(lat_a) * Math.sin(lat_b) + Math.cos(lat_a) * Math.cos(lat_b) * Math.cos(delta_lon));
     // TODO:
-    // We can probably use a radius that is better adapted to the latitude.
+    // We can probably use a "radius" that is better adapted to the latitude.  But
+    // for the rough distance computed by this application, an average is just fine.
     return earth_avg_radius * central_angle;
 }
 

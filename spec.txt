@@ -14,7 +14,7 @@ POST /new/USER/PASS
 
 A trace is JSON data:
 
-  { id:      UUID
+  { uuid:    UUID
     version: 1
     device:  device-name
     start:   timestamp,
