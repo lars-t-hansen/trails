@@ -62,7 +62,7 @@ function onUpload2() {
 	       function () {
 		   // FIXME: this is crude.  Why did it fail?  Did it fail for this record
 		   // or in general?
-		   showMessage("Upload failed.");
+		   alert("Upload failed.");
 		   enableUpload();
 	       });
 }
@@ -227,7 +227,7 @@ function deviceName() {
     return g_device;
 }
 
-function userId() {
+function userName() {
     if (!g_userid)
 	g_userid = "lth";	// FIXME
     return g_userid;

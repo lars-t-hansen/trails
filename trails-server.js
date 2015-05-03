@@ -27,7 +27,7 @@ var fs = require('fs');
 //////////////////////////////////////////////////////////////////////
 // Configuration
 
-var g_datadir = "/home/lth/src/trails-server/"; // CONFIGUREME
+var g_datadir = "/home/lth/trails/"; // CONFIGUREME
 var g_port = 9003;
 var g_default = "trails.html";
 
@@ -42,8 +42,8 @@ var g_users = [];
 function runServer() {
     if (!loadUsers())
 	return;
-    http.createServer(requestHandler).listen(port, '127.0.0.1');
-    console.log('Server running at http://127.0.0.1:' + port + '/');
+    http.createServer(requestHandler).listen(g_port, '0.0.0.0');
+    console.log('Server running at http://0.0.0.0:' + g_port + '/');
 }
 
 const user_id = "[a-zA-Z0-9]+";
@@ -55,6 +55,7 @@ const default_re = new RegExp("^\\/?$");
 
 function requestHandler(req, res) {
     var m, user, passwd
+    console.log(req.method + " " + req.url);
     switch (req.method) {
     case 'GET':
 	// Must serve up the app files, at least.
@@ -62,14 +63,19 @@ function requestHandler(req, res) {
 	    serveFile(res, fn);
 	    return;
 	}
-	if ((m = req.url.match(default_re)))
-	    serveFile(res, resourceFile(g_default));
+	// This is wrong: it needs to serve up a redirect, or relative links from within
+	// a document won't work.
+	/*
+	if ((m = req.url.match(default_re)) && (fn = resourceFile(g_default))) {
+	    serveFile(res, fn);
 	    return;
 	}
+	*/
 	break;
     case 'POST':
-	if ((m = req.url.match(post_trail_re)) && (user = m[1]) && (passwd = decodeURIComponent(m2))) {
+	if ((m = req.url.match(post_trail_re)) && (user = m[1]) && (passwd = decodeURIComponent(m[2]))) {
 	    if (!checkUser(user, passwd)) {
+		console.log("Bad user or password");
 		errNoDocument(req, res);
 		return;
 	    }
@@ -115,7 +121,8 @@ function logError(error) {
 // File layer.
 
 function resourceFile(base) {
-    var fn = datadir + "files/" + base;
+    var fn = g_datadir + "r/" + base;
+    console.log("Trying <" + fn + "> " + fs.existsSync(fn));
     return fs.existsSync(fn) ? fn : null;
 }
 
@@ -123,6 +130,34 @@ function serveFile(res, filename) {
     var data = fs.readFileSync(filename);
     res.writeHead(200, {'Content-Type': mimeTypeFromName(filename)});
     res.end(data);
+}
+
+//////////////////////////////////////////////////////////////////////
+//
+// Utilities.
+
+if (!String.prototype.endsWith)
+    String.prototype.endsWith = function (s) {
+	if (s.length > this.length)
+	    return false;
+	return this.substring(this.length-s.length) == s;
+    };
+    
+var mimetypes =
+    { ".html": "text/html",
+      ".css":  "text/css",
+      ".txt":  "text/plain",
+      ".jpg":  "image/jpeg",
+      ".png":  "image/png",
+      ".js":   "application/javascript"
+    };
+var default_mimetype = "application/octet-stream";
+
+function mimeTypeFromName(name) {
+    for ( var pattern in mimetypes )
+	if (name.endsWith(pattern))
+	    return mimetypes[pattern];
+    return default_mimetype;
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -140,7 +175,7 @@ function serveFile(res, filename) {
 
 function loadUsers() {
     try {
-	var tmp = JSON.parse(fs.readFileSync(g_datadir + "/users.dat"), {encoding:'utf8'});
+	var tmp = JSON.parse(fs.readFileSync(g_datadir + "users.dat"), {encoding:'utf8'});
 	if (!tmp || typeof tmp != "object")
 	    throw new Error("users.dat: Not an object");
 	if (!tmp.hasOwnProperty("version") || tmp.version != 1)
