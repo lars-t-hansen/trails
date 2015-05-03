@@ -44,14 +44,14 @@ function doPlot() {
     else
         scale_lat *= lat_range / lon_range;
     */
-    
+
     var poly = "";
     for ( var i=0 ; i < rs.length ; i++ ) {
         var r = rs[i];
         if (poly != "")
             poly += ", ";
         var lon = Math.round((r[1] - lon_min) / lon_range * width * scale_lon);
-        var lat = Math.round((r[0] - lat_min) / lat_range * height * scale_lat);
+        var lat = height - Math.round((r[0] - lat_min) / lat_range * height * scale_lat);
         poly += lon + " " + lat;
     }
 
