@@ -1,4 +1,5 @@
-// Sample map plotter.  Just draws an SVG of the route on a grid
+// Sample map plotter.  Just draws an SVG of the route on a grid.
+
 function doPlot() {
     var data = hakadal; // JSON data
     var rs = data.readings;
@@ -17,28 +18,27 @@ function doPlot() {
     var lat_range = lat_max - lat_min;
     var width = 600;
     var height = 600;
+
+    // Scale for non-square drawing surface first.
     var scale_lat = Math.min(1, width/height);
     var scale_lon = Math.min(1, height/width);
 
-    //alert([lat_min, lat_max, lon_min, lon_max]);
-
-    // A degree of angle in the x direction is not the same distance
-    // as a degree of angle in the y direction.  (At northern
-    // latitudes the latter will be much larger than the former.)  We
-    // must factor that in.
+    // Scale for position on the earth second.
     //
-    // Hack - maybe use the extremes we've already computed?  Only for "close" data.
-    // Should we compute this continuously, somehow?
+    // The unit of measurement is a unit length along the y axis
+    // (along the longitude), this value is everywhere the same.
+    //
+    // So the x measurements have to be scaled by the factor x_unit /
+    // y_unit, where x_unit is a unit length along the x axis, at a
+    // given latitude.
 
-    var unit_lat = distanceBetween(lat_min, lon_min, lat_max, lon_min);
-    var unit_lon = distanceBetween(lat_min, lon_min, lat_min, lon_max);
+    var unit_y = distanceBetween(0, 0, 1, 0);
+    var unit_x = distanceBetween(lat_min, Math.floor(lon_min), lat_min, Math.floor(lon_min)+1);
 
-    //alert([unit_lat, unit_lon]);
-
-    // TODO: justify this
-    //scale_lon *= unit_lon / unit_lat;
+    scale_lon *= unit_x / unit_y;
 
     /*
+    // Old code - don't need this now?
     if (lat_range > lon_range)
         scale_lon *= lon_range / lat_range;
     else

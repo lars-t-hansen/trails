@@ -20,6 +20,61 @@
 //   Otherwise create a new trail for the user and respond 201 Created
 //     with a JSON-encoded object { UUID: <uuid> } <uuid> is the input
 //     uuid.
+//
+// Files are stored in data/USER-ID:
+//   summary.json contains summary data
+//   <date>-<uuid>.json where date is yyyymmddhhmmss and uuid is a 16-hex-digit
+//     UUID value (found in the file) is a trail.
+//
+// summary.json version 1:
+//
+//   { version: 1,
+//     waypoints: [ { name: string, lat: number, lon: number }, ... ],
+//     data: [ { start: number,
+//               file: string,
+//               type: string,
+//               label: string,
+//               comment: string,
+//               distance: number,
+//               time: number,
+//               waypoints: [string, ...] }, ... ] }
+//
+//   where distance is in meters and time in seconds.  The label and
+//   comment any user-assigned values (default nothing), and the type
+//   is standardized, see below.  Waypoints (within a trip) is the set
+//   of waypoints that were found to be touched by the trip when the
+//   trip data were last processed.  Waypoints (overall) is the
+//   complete set of waypoints for this user.
+//
+// <date>-<uuid>.json version 1:
+//
+//   { version: 1,
+//     id: string,
+//     device: string,
+//     start: number,
+//     end: number,
+//     distance: number,
+//     readings: [[lat,lon], ...] }
+//
+// <date>-<uuid>.json version 2 (Note incompatible change from "id" to "uuid" and
+//   change in meaning of "device")
+//
+//   { version: 2,
+//     uuid: string,
+//     device: { name: string, hardware: string, os: string, ua: string },
+//     start: number,
+//     end: number,
+//     distance: number,
+//     waypoints: [ { name: string, lat: number, lon: number }, ... ],
+//     type: string,
+//     readings: [[lat,lon,delta], ...] }
+//
+//   Valid values for "type" are "bike", "ski", "walk", "other".
+//   Delta is the delta between the time of the observation and the start time.
+//   Values of device are best effort, empty string if no data available.  The
+//     purpose is to allow values originating on specific devices or software
+//     to be tracked over time, in case future adjustments need to be made
+//     or if specific devices are found to be faulty in some way.
 
 var http = require('http');
 var fs = require('fs');
@@ -142,7 +197,7 @@ if (!String.prototype.endsWith)
 	    return false;
 	return this.substring(this.length-s.length) == s;
     };
-    
+
 var mimetypes =
     { ".html": "text/html",
       ".css":  "text/css",

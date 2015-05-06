@@ -33,7 +33,7 @@ function onStop() {
     g_running = false;
     g_watcher = -1;
     var trail =
-	{ uuid: makeUUID(),
+	{ id: makeUUID(),
 	  version: 1,
 	  device: deviceName(),
 	  start: g_startTime,
