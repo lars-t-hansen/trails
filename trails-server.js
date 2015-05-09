@@ -82,6 +82,7 @@ function requestHandler(req, res) {
 	simpleTextResponse(res, 404, "Bad request");
     }
     catch (e) {
+	console.log("Server failure at outer level");
 	serverFailure(req, res);
     }
 }
@@ -139,10 +140,11 @@ function receiveTrail(req, res, user) {
 	    }
 	    // TODO: Check against existing UUIDs
 	    try {
-		// FIXME: proper file name
-		fs.writeFileSync("data/" + user + "/new-" + Date.now() + ".json", bodyData);
+		// FIXME: proper file name with uuid
+		fs.writeFileSync(g_datadir + "data/" + user + "/new-" + Date.now() + ".json", bodyData);
 	    }
 	    catch (e) {
+		console.log("Server failure during write: " + e);
 		serverFailure(req, res);
 		return;
 	    }
@@ -154,6 +156,7 @@ function receiveTrail(req, res, user) {
 		res.end(JSON.stringify({ uuid: parsed.uuid }));
 	}
 	catch (e) {
+	    console.log("Server failure during processing: " + e);
 	    serverFailure(req, res);
 	}
     });
@@ -249,7 +252,7 @@ function validateTrail(t) {
 	return true;
     }
 
-    function validateDenseArray(x, predicate) {
+    function validateDenseArray(xs, predicate) {
 	if (!validatePositiveInt(xs.length))
 	    return false;
 	for ( var i=0 ; i < xs.length ; i++ ) {
