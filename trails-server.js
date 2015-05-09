@@ -137,11 +137,21 @@ function receiveTrail(req, res, user) {
 		simpleTextResponse(res, 400, "Malformed data (bad format)");
 		return;
 	    }
+	    // TODO: Check against existing UUIDs
+	    try {
+		// FIXME: proper file name
+		fs.writeFileSync("data/" + user + "/new-" + Date.now() + ".json", bodyData);
+	    }
+	    catch (e) {
+		serverFailure(req, res);
+		return;
+	    }
 
-	    // TODO: store the data!!
-	    // TODO: check against existing UUIDs
 	    res.writeHead(201, {"Content-Type": "application/json"});
-	    res.end(JSON.stringify({ uuid: parsed.uuid }));
+	    if (parsed.version == 1)
+		res.end(JSON.stringify({ id: parsed.id }));
+	    else
+		res.end(JSON.stringify({ uuid: parsed.uuid }));
 	}
 	catch (e) {
 	    serverFailure(req, res);

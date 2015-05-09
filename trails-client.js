@@ -4,6 +4,7 @@
 
 var g_startTime;
 var g_readings;
+var g_waypoints;
 var g_distance;
 var g_watcher;
 var g_running;
@@ -18,9 +19,10 @@ function onStart() {
     g_server = window.location.origin;
     g_startTime = Date.now();
     g_readings = [];
+    g_waypoints = [];
     g_distance = 0;
     g_watcher = navigator.geolocation.watchPosition(recordPosition,
-						    () => true,
+						    function () { return true },
 						    { enableHighAccuracy: true });
     clearDisplay();
     setButtons("running");
@@ -39,10 +41,26 @@ function onStop() {
 	  start: g_startTime,
 	  end: endTime,
 	  distance: g_distance,
+	  waypoints: g_waypoints,
 	  readings: g_readings };
     appendRecord(JSON.stringify(trail));
     g_readings = null;
     setButtons("idle");
+}
+
+function onWaypoint() {
+    if (!g_readings.length) {
+	alert("No reading yet");
+	return;
+    }
+    var response = prompt("Set waypoint");
+    if (response === null)
+	return;
+    response = response.replace(/^\s+/, "").replace(/\s+$/,"");
+    if (response === "")
+	return;
+    var last = g_readings[g_readings.length-1];
+    g_waypoints.push({name: response, lat: last[0], lon: last[1]});
 }
 
 function onUpload() {
@@ -134,6 +152,7 @@ function initDisplay() {
     g_display = {
 	startButton: document.getElementById("startButton"),
 	stopButton: document.getElementById("stopButton"),
+	waypointButton: document.getElementById("waypointButton"),
 	uploadButton: document.getElementById("uploadButton"),
 	observations: document.getElementById("observations"),
 	elapsed: document.getElementById("elapsed"),
@@ -146,10 +165,12 @@ function setButtons(state) {
     switch (state) {
     case "idle":
 	enable(g_display.startButton);
+	disable(g_display.waypointButton);
 	disable(g_display.stopButton);
 	break;
     case "running":
 	disable(g_display.startButton);
+	enable(g_display.waypointButton);
 	enable(g_display.stopButton);
     }
     enableUpload();
