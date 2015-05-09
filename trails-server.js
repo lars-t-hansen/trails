@@ -21,7 +21,7 @@
 //     with a JSON-encoded object { UUID: <uuid> } <uuid> is the input
 //     uuid.
 //
-// Files are stored in data/USER-ID:
+// Files are stored in data/USER-ID/:
 //   summary.json contains summary data
 //   <date>-<uuid>.json where date is yyyymmddhhmmss and uuid is a 16-hex-digit
 //     UUID value (found in the file) is a trail.
@@ -143,16 +143,20 @@ function requestHandler(req, res) {
                     req.connection.destroy();
             });
             req.on("end", function () {
-		console.log("Received data")
-		console.log("<<<");
-		console.log(bodyData);
-		console.log(">>>");
-		// TODO: exceptions here?
-		var parsed = JSON.parse(bodyData);
-		// TODO: validate it
-		// TODO: check against existing UUIDs
-		res.writeHead(201, {'Content-Type': 'application/json'});
-		res.end(JSON.stringify({ uuid: parsed.uuid }));
+		console.log("Received data");
+		try {
+		    var parsed = JSON.parse(bodyData);
+		    // FIXME: proper file name
+		    fs.writeFileSync("data/" + user + "/new-" + Date.now() + ".json", bodyData);
+		    // TODO: exceptions here?
+		    // TODO: validate it
+		    // TODO: check against existing UUIDs
+		    res.writeHead(201, {'Content-Type': 'application/json'});
+		    res.end(JSON.stringify({ uuid: parsed.uuid }));
+		}
+		catch (e) {
+		    errNoDocument(req, res);
+		}
             });
 	    return;
 	}
