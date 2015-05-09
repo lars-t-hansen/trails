@@ -9,14 +9,18 @@
     <script src="trails-client.js"></script>
     <title>Trails</title>
   </head>
-  <body onload="initialize()">
+  <body onload="initialize()" style="width: 100%">
     <div>
-      <button id="startButton" onclick="onStart()" style="width: 49%; height: 30%; font-size: 10vw">Start</button>
-      <button id="stopButton" onclick="onStop()" style="width: 49%; height: 30%; font-size: 10vw">Stop</button>
+      <button id="startButton" onclick="onStart()" style="width: 49%; height: 20%; font-size: 10vw">Start</button>
+      <button id="stopButton" onclick="onStop()" style="width: 49%; height: 20%; font-size: 10vw">Stop</button>
     </div>
     <div>&nbsp;</div>
     <div>
-      <button id="uploadButton" onclick="onUpload()" style="width: 100%; height: 30%; font-size: 10vw">Upload</button>
+      <button id="waypointButton" onclick="onWaypoint()" style="width: 100%; height: 20%; font-size: 10vw">Waypoint</button>
+    </div>
+    <div>&nbsp;</div>
+    <div>
+      <button id="uploadButton" onclick="onUpload()" style="width: 100%; height: 15%; font-size: 8vw">Upload</button>
     </div>
     <div>&nbsp;</div>
     <div style="font-size: 5vw">
