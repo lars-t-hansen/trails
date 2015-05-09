@@ -12,7 +12,7 @@ Step 1: record traces and upload them.  Uploader has a REST API.
 
 POST /new/USER/PASS
 
-A trace is JSON data:
+A trace is JSON data [this is obsolete, new info below]
 
   { uuid:    UUID
     version: 1
@@ -37,3 +37,104 @@ The server should just create a new file, named perhaps new-UUID.data, if
 the response is OK.  Server code can later process these files.
 
 The server should be single-threaded, at least on a per-user basis.
+
+
+Server protocol.
+
+A USER-ID is some alphanumeric string.
+A PASSWD is some string, uriComponent-encoded.
+A PARAMETERS is some string, uriComponent-encoded.
+
+Protocol:
+
+GET /r/FILENAME
+  Respond 200 OK with the named file if it exists.
+  Note, this is for static resources.
+
+GET /plot/USER-ID/PASSWD/PARAMETERS
+  Respond 200 OK with the plot as payload if possible.
+  When decoded, PARAMETERS must be a JSON object along the following lines:
+
+  { trails: [uuid, ...] }
+
+  where uuid is either the uuid from version 2+ or the id from version 1.
+
+  Trips are plotted together with different colors and all relevant waypoints.
+  How this will look for many trips is unknown.
+
+GET /summary/USER-ID/PASSWD
+  Respond 200 OK with the summary for the user (basically HTML+JS).
+
+POST /trail/USER-ID/PASSWD
+  Payload: the contents of the trail, a JSON object as outlined in
+    spec.txt, notably with a UUID field.
+  Respond 404 Not found if the user does not exist.
+  Respond 404 Not found if the password is wrong.
+  Respond 409 Conflict if a record with the UUID of the datum already
+    exists in the database.
+  Otherwise create a new trail for the user and respond 201 Created
+    with a JSON-encoded object { UUID: <uuid> } <uuid> is the input
+    uuid.
+
+Files are stored in data/USER-ID:
+  summary.json contains summary data
+  <date>-<uuid>.json where date is yyyymmddhhmmss and uuid is a 16-hex-digit
+    UUID value (found in the file) is a trail.
+
+summary.json version 1:
+
+  { version: 1,
+    waypoints: [ { name: string, lat: number, lon: number }, ... ],
+    data: [ { start: number,
+              file: string,
+              type: string,
+              label: string,
+              comment: string,
+              distance: number,
+              time: number,
+              waypoints: [string, ...] }, ... ] }
+
+  where distance is in meters and time in seconds.  The label and
+  comment any user-assigned values (default nothing), and the type
+  is standardized, see below.  Waypoints (within a trip) is the set
+  of waypoints that were found to be touched by the trip when the
+  trip data were last processed.  Waypoints (overall) is the
+  complete set of waypoints for this user.
+
+<date>-<uuid>.json version 1:
+
+  { version: 1,
+    id: string,
+    device: string,
+    start: number,
+    end: number,
+    distance: number,
+    waypoints: [ { name: string, lat: number, lon: number }, ... ],
+    readings: [[lat,lon], ...] }
+
+  id is a nonempty string of hex digits.
+  timestamps are positive integers (milliseconds since JS epoch).
+  distance is a positive number.
+  waypoints is optional, backported from version 2.
+  
+<date>-<uuid>.json version 2 (Note incompatible change from "id" to "uuid" and
+  change in meaning of "device")
+
+  { version: 2,
+    uuid: string,
+    device: { name: string, hardware: string, os: string, ua: string },
+    start: number,
+    end: number,
+    distance: number,
+    waypoints: [ { name: string, lat: number, lon: number }, ... ],
+    type: string,
+    readings: [[lat,lon,delta], ...] }
+
+  Valid values for "type" are "bike", "ski", "hike", "other".
+  Delta is the delta between the time of the observation and the start time.
+  Values of device are best effort, empty string if no data available.  The
+    purpose is to allow values originating on specific devices or software
+    to be tracked over time, in case future adjustments need to be made
+    or if specific devices are found to be faulty in some way.
+  uuid is length 16, hex digits, upper case required.
+  waypoints are new waypoints this trip, uniqueness is not required here.

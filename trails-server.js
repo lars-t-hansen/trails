@@ -1,174 +1,286 @@
 // Copyright 2015 Lars T Hansen.
 // Code for Node.js.
 //
-// A USER-ID is some alphanumeric string.
-// A PASSWD is some string, uriComponent-encoded.
+// After setup this script calls runServer().
 
-// Protocol:
-//
-// GET /r/FILENAME
-//   Respond 200 OK with the named file if it exists.
-//   Note, this is for static resources.
-//
-// POST /trail/USER-ID/PASSWD
-//   Payload: the contents of the trail, a JSON object as outlined in
-//     spec.txt, notably with a UUID field.
-//   Respond 404 Not found if the user does not exist.
-//   Respond 404 Not found if the password is wrong.
-//   Respond 409 Conflict if a record with the UUID of the datum already
-//     exists in the database.
-//   Otherwise create a new trail for the user and respond 201 Created
-//     with a JSON-encoded object { UUID: <uuid> } <uuid> is the input
-//     uuid.
-//
-// Files are stored in data/USER-ID:
-//   summary.json contains summary data
-//   <date>-<uuid>.json where date is yyyymmddhhmmss and uuid is a 16-hex-digit
-//     UUID value (found in the file) is a trail.
-//
-// summary.json version 1:
-//
-//   { version: 1,
-//     waypoints: [ { name: string, lat: number, lon: number }, ... ],
-//     data: [ { start: number,
-//               file: string,
-//               type: string,
-//               label: string,
-//               comment: string,
-//               distance: number,
-//               time: number,
-//               waypoints: [string, ...] }, ... ] }
-//
-//   where distance is in meters and time in seconds.  The label and
-//   comment any user-assigned values (default nothing), and the type
-//   is standardized, see below.  Waypoints (within a trip) is the set
-//   of waypoints that were found to be touched by the trip when the
-//   trip data were last processed.  Waypoints (overall) is the
-//   complete set of waypoints for this user.
-//
-// <date>-<uuid>.json version 1:
-//
-//   { version: 1,
-//     id: string,
-//     device: string,
-//     start: number,
-//     end: number,
-//     distance: number,
-//     readings: [[lat,lon], ...] }
-//
-// <date>-<uuid>.json version 2 (Note incompatible change from "id" to "uuid" and
-//   change in meaning of "device")
-//
-//   { version: 2,
-//     uuid: string,
-//     device: { name: string, hardware: string, os: string, ua: string },
-//     start: number,
-//     end: number,
-//     distance: number,
-//     waypoints: [ { name: string, lat: number, lon: number }, ... ],
-//     type: string,
-//     readings: [[lat,lon,delta], ...] }
-//
-//   Valid values for "type" are "bike", "ski", "walk", "other".
-//   Delta is the delta between the time of the observation and the start time.
-//   Values of device are best effort, empty string if no data available.  The
-//     purpose is to allow values originating on specific devices or software
-//     to be tracked over time, in case future adjustments need to be made
-//     or if specific devices are found to be faulty in some way.
-
-var http = require('http');
-var fs = require('fs');
+const http = require('http');
+const fs = require('fs');
 
 //////////////////////////////////////////////////////////////////////
-// Configuration
+//
+// Configuration.
 
-var g_datadir = "/home/lth/trails/"; // CONFIGUREME
-var g_port = 9003;
-var g_default = "trails.html";
+const g_datadir = "/home/lth/trails/";
+const g_scheme = "http";
+const g_if = "0.0.0.0";
+const g_port = 9003;
+const g_default = "trails.html";
+const g_DEBUG = true;
 
 //////////////////////////////////////////////////////////////////////
-// Globals
-
-var g_users = [];
-
-//////////////////////////////////////////////////////////////////////
-// Protocol layer
+//
+// Protocol layer.
 
 function runServer() {
     if (!loadUsers())
 	return;
-    http.createServer(requestHandler).listen(g_port, '0.0.0.0');
-    console.log('Server running at http://0.0.0.0:' + g_port + '/');
+    if (g_scheme != "http") {
+	console.log("Only http supported");
+	process.exit(1);
+    }
+    http.createServer(requestHandler).listen(g_port, g_if);
+    console.log("Server running at http://" + g_if + ":" + g_port + "/");
 }
+
+// The protocol is documented in spec.txt.
 
 const user_id = "[a-zA-Z0-9]+";
-const passwd = "[-_.!~*'()a-zA-Z0-9]+";
-const post_trail_re = new RegExp("^\\/trail\\/(" + user_id + ")\\/(" + passwd + ")$");
+const uripart = "[-_.!~*'()a-zA-Z0-9]+";
 const filename = "[-_a-zA-Z0-9.]+";
+const post_trail_re = new RegExp("^\\/trail\\/(" + user_id + ")\\/(" + uripart + ")$");
 const resource_re = new RegExp("^\\/r\\/(" + filename + ")$");
 const default_re = new RegExp("^\\/?$");
+const plot_re = new RegExp("^\\/plot\\/(" + user_id + ")\\/(" + uripart + ")\\?(" + uripart + ")$");
 
 function requestHandler(req, res) {
-    var m, user, passwd
-    console.log(req.method + " " + req.url);
-    switch (req.method) {
-    case 'GET':
-	// Must serve up the app files, at least.
-	if ((m = req.url.match(resource_re)) && (fn = resourceFile(m[1]))) {
-	    serveFile(res, fn);
-	    return;
-	}
-	// This is wrong: it needs to serve up a redirect, or relative links from within
-	// a document won't work.
-	/*
-	if ((m = req.url.match(default_re)) && (fn = resourceFile(g_default))) {
-	    serveFile(res, fn);
-	    return;
-	}
-	*/
-	break;
-    case 'POST':
-	if ((m = req.url.match(post_trail_re)) && (user = m[1]) && (passwd = decodeURIComponent(m[2]))) {
-	    if (!checkUser(user, passwd)) {
-		console.log("Bad user or password");
-		errNoDocument(req, res);
+    try {
+	var m, user, passwd, host, params;
+
+	if (g_DEBUG)
+	    console.log(req.method + " " + req.url);
+
+	switch (req.method) {
+	case "GET":
+	    if ((m = req.url.match(resource_re)) && (fn = resourceFile(m[1]))) {
+		serveFile(res, fn);
 		return;
 	    }
-	    var bodyData = "";
-	    // TODO: error handling on receipt?
-	    req.on("data", function (data) {
-		bodyData += data;
-		// 1MB should be plenty, but we'll see.
-		if (bodyData.length > 1e6)
-                    req.connection.destroy();
-            });
-            req.on("end", function () {
-		console.log("Received data")
-		console.log("<<<");
-		console.log(bodyData);
-		console.log(">>>");
-		// TODO: exceptions here?
-		var parsed = JSON.parse(bodyData);
-		// TODO: validate it
-		// TODO: check against existing UUIDs
-		res.writeHead(201, {'Content-Type': 'application/json'});
-		res.end(JSON.stringify({ uuid: parsed.uuid }));
-            });
-	    return;
+	    if (req.url.match(default_re) && (host = req.headers.host)) {
+		simpleTextResponse(res, 301, "Moved permanently\nLocation: " + g_scheme + "://" + host + "/r/" + g_default);
+		return;
+	    }
+	    if ((m = req.url.match(plot_re)) && (user = m[1]) && (passwd = decodeURIComponent(m[2])) && (params = decodeURIComponent(m[3]))) {
+		if (!checkUser(user, passwd)) {
+		    simpleTextResponse(res, 403, "Bad user or password");
+		    return;
+		}
+		servePlot(res, user, params);
+		return;
+	    }
+	    break;
+	case "POST":
+	    if ((m = req.url.match(post_trail_re)) && (user = m[1]) && (passwd = decodeURIComponent(m[2]))) {
+		if (!checkUser(user, passwd)) {
+		    simpleTextResponse(res, 403, "Bad user or password");
+		    return;
+		}
+		receiveTrail(req, res, user);
+		return;
+	    }
+	    break;
 	}
-	break;
+	simpleTextResponse(res, 404, "Bad request");
     }
-    errNoDocument(req, res);
+    catch (e) {
+	serverFailure(req, res);
+    }
 }
 
-function errNoDocument(req, res, extra) {
-    logError("Bad request: " + req.url);
-    res.writeHead(404, {'Content-Type': 'text/plain'});
-    res.end('No such document' + (typeof extra == 'string' ? (' ' + extra) : ''));
+function serverFailure(req, res) {
+    try {
+	simpleTextResponse(res, 500, "Internal server error - blame the programmer");
+    }
+    catch (e) {
+	try { req.connection.destroy(); } catch (e) { /* Oh well */ }
+    }
+}
+
+function simpleTextResponse(res, code, message) {
+    res.writeHead(code, {"Content-Type": "text/plain"});
+    res.end(message);
 }
 
 function logError(error) {
     console.log(error);
+}
+
+function receiveTrail(req, res, user) {
+    var bodyData = "";
+
+    // TODO: error handling on receipt?
+    req.on("data", function (data) {
+	try {
+	    bodyData += data;
+	    // 10MB should be plenty, but we'll see.
+	    if (bodyData.length > 1e7)
+		req.connection.destroy();
+	}
+	catch (e) { /* Anything useful to do here? */ }
+    });
+
+    req.on("end", function () {
+	try {
+	    if (g_DEBUG) {
+		console.log("Received data:")
+		console.log("<<<");
+		console.log(bodyData.substring(0,Math.min(500,bodyData.length)));
+		console.log(">>>");
+	    }
+	    try {
+		var parsed = JSON.parse(bodyData);
+	    }
+	    catch (e) {
+		simpleTextResponse(res, 400, "Malformed data (not JSON)");
+		return;
+	    }
+	    if (!validateTrail(parsed)) {
+		simpleTextResponse(res, 400, "Malformed data (bad format)");
+		return;
+	    }
+
+	    // TODO: store the data!!
+	    // TODO: check against existing UUIDs
+	    res.writeHead(201, {"Content-Type": "application/json"});
+	    res.end(JSON.stringify({ uuid: parsed.uuid }));
+	}
+	catch (e) {
+	    serverFailure(req, res);
+	}
+    });
+}
+
+function validateTrail(t) {
+    if (!t || typeof t != "object")
+	return false;
+
+    if (!validatePositiveInt(t.version))
+	return false;
+
+    switch (t.version) {
+    case 1:
+	return (typeof t.id == "string" &&
+		t.id.match(/^[A-Fa-f0-9]+$/) &&
+		typeof t.device == "string" &&
+		validateFinite(t.start) &&
+		validateFinite(t.end) &&
+		0 <= t.start && t.start <= t.end &&
+		validateFinite(t.distance) &&
+		t.distance >= 0 &&
+		(!t.waypoints || validateWaypoints(t.waypoints)) &&
+		validateReadings(t.readings));
+
+    case 2:
+	return (typeof t.uuid == "string" &&
+		t.uuid.match(/^[A-F0-9]{16}$/) &&
+		validateDevice(t.device) &&
+		validateFinite(t.start) &&
+		validateFinite(t.end) &&
+		0 <= t.start && t.start <= t.end &&
+		validateFinite(t.distance) &&
+		t.distance >= 0 &&
+		validateType(t.type) &&
+		validateWaypoints(t.waypoints) &&
+		validateReadings(t.readings));
+
+    default:
+	return false;
+    }
+
+    function validateType(ty) {
+	if (typeof ty != "string")
+	    return false;
+
+	switch (ty) {
+	case "bike":
+	case "walk":
+	case "hike":
+	case "other":
+	    return t.version >= 2;
+	default:
+	    return false;
+	}
+    }
+
+    function validateDevice(x) {
+	if (!x || typeof x != "object")
+	    return false;
+
+	return (typeof x.name == "string" &&
+		typeof x.hardware == "string" &&
+		typeof x.os == "string" &&
+		typeof x.ua == "string");
+    }
+
+    function validateWaypoints(ws) {
+	return validateDenseArray(ws, validateWaypoint);
+    }
+
+    function validateWaypoint(x) {
+	if (!x || typeof x != "object")
+	    return false;
+
+	return (typeof x.name == "string" &&
+		validateLatLon(x.lat) &&
+		validateLatLon(x.lon));
+    }
+
+    function validateReadings(rs) {
+	return validateDenseArray(rs, validateReading);
+    }
+
+    function validateReading(x) {
+	if (!validateDenseArray(x) || x.length < 2)
+	    return false;
+	if (!(validateLatLon(x[0]) && validateLatLon(x[1])))
+	    return false;
+	if (t.version >= 2)
+	    if (x.length < 3 || !validateFinite(x[2]) || x[2] < 0)
+		return false;
+	return true;
+    }
+
+    function validateDenseArray(x, predicate) {
+	if (!validatePositiveInt(xs.length))
+	    return false;
+	for ( var i=0 ; i < xs.length ; i++ ) {
+	    if (!(i in xs))
+		return false;
+	    if (predicate !== undefined)
+		if (!predicate(xs[i]))
+		    return false;
+	}
+	return true;
+    }
+
+    function validateLatLon(x) {
+	return validateFinite(x) && x >= -90.0 && x <= 90.0;
+    }
+
+    function validatePositiveInt(x) {
+	if (!validateFinite(x))
+	    return false;
+	if (Math.floor(x) != x || x < 0)
+	    return false;
+	return true;
+    }
+
+    function validateFinite(x) {
+	return typeof x == "number" && isFinite(x) && !isNaN(x);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////
+//
+// Plotting.
+
+// Parameters would probably be the date-uuid strings of the files to
+// serve up, perhaps with some keywords supported (all? latest? year?)
+// and options on how to plot (initially none).  This would deliver an
+// HTML document with SVG.
+
+function servePlot(res, user, parameters) {
+    // Implementme
+    simpleTextResponse(res, 200, "OK");
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -183,7 +295,7 @@ function resourceFile(base) {
 
 function serveFile(res, filename) {
     var data = fs.readFileSync(filename);
-    res.writeHead(200, {'Content-Type': mimeTypeFromName(filename)});
+    res.writeHead(200, {"Content-Type": mimeTypeFromName(filename)});
     res.end(data);
 }
 
@@ -198,7 +310,7 @@ if (!String.prototype.endsWith)
 	return this.substring(this.length-s.length) == s;
     };
 
-var mimetypes =
+const mimetypes =
     { ".html": "text/html",
       ".css":  "text/css",
       ".txt":  "text/plain",
@@ -206,7 +318,8 @@ var mimetypes =
       ".png":  "image/png",
       ".js":   "application/javascript"
     };
-var default_mimetype = "application/octet-stream";
+
+const default_mimetype = "application/octet-stream";
 
 function mimeTypeFromName(name) {
     for ( var pattern in mimetypes )
@@ -221,6 +334,8 @@ function mimeTypeFromName(name) {
 //
 // TODO: Surely there must exist code for this already?
 
+const g_users = [];
+
 // Format of users.dat:
 //
 //   { version: 1,
@@ -230,7 +345,7 @@ function mimeTypeFromName(name) {
 
 function loadUsers() {
     try {
-	var tmp = JSON.parse(fs.readFileSync(g_datadir + "users.dat"), {encoding:'utf8'});
+	var tmp = JSON.parse(fs.readFileSync(g_datadir + "users.dat"), {encoding:"utf8"});
 	if (!tmp || typeof tmp != "object")
 	    throw new Error("users.dat: Not an object");
 	if (!tmp.hasOwnProperty("version") || tmp.version != 1)
