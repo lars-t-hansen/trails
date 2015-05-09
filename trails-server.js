@@ -344,7 +344,7 @@ function mimeTypeFromName(name) {
 //
 // TODO: Surely there must exist code for this already?
 
-const g_users = [];
+var g_users = [];
 
 // Format of users.dat:
 //
