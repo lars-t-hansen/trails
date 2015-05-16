@@ -89,6 +89,7 @@ function requestHandler(req, res) {
 	case "GET":
 	    // GET /r/filename
 	    if ((m = req.url.match(resource_re)) && (fn = resourceFile(m[1]))) {
+		// TODO: Make async
 		serveFile(res, fn);
 		return;
 	    }
@@ -104,6 +105,11 @@ function requestHandler(req, res) {
 		    simpleTextResponse(res, 403, "Bad user or password");
 		    return;
 		}
+		// TODO: This requires "significant" server processing of data, which
+		// scales poorly, and node.js has no obvious way to offload this.  Even
+		// reading the data from disk may be slow and should be async.
+		//
+		// (JXCore may alleviate this by supporting multiple node workers.)
 		servePlot(req, res, user, params);
 		return;
 	    }
@@ -172,6 +178,11 @@ function receiveTrail(req, res, user) {
 		console.log(bodyData.substring(0,Math.min(500,bodyData.length)));
 		console.log(">>>");
 	    }
+
+	    // TODO: Again the following processing may create a performance
+	    // problem for the server (large data sets, usually, and then
+	    // the synchronous write).
+
 	    try {
 		var parsed = JSON.parse(bodyData);
 	    }
