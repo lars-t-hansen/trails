@@ -11,6 +11,9 @@ var g_running;
 var g_server;
 
 function initialize() {
+    if (!hasUserAndPassword())
+	onSettings();
+
     initDisplay();
     g_running = false;
 }
@@ -85,6 +88,11 @@ function onUpload2() {
 	       });
 }
 
+function onSettings() {
+    // Let's hope this is synchronous (aborts the running script).
+    location.replace("settings.html");
+}
+
 function recordPosition(position) {
     var lat = position.coords.latitude;
     var lon = position.coords.longitude;
@@ -128,11 +136,15 @@ function distanceBetween(lat_a, lon_a, lat_b, lon_b) {
 }
 
 function sendRecord(r, onSuccess, onFailure) {
+    // Get these first since the accessors will go to the settings page
+    // if they are not set.  (With no auto-return to upload.)
+    var user = userName();
+    var pass = password();
     var req = new XMLHttpRequest();
     req.onload = function (ev) { onSuccess(); }; // TODO: response codes!
     req.onerror = function (ev) { onFailure() };
     req.onabort = function (ev) { onFailure() };
-    req.open("post", g_server + "/trail/" + userName() + "/" + encodeURIComponent(password()));
+    req.open("post", g_server + "/trail/" + user + "/" + encodeURIComponent(pass));
     req.overrideMimeType("application/json");
     req.send(r);
 }
@@ -154,6 +166,7 @@ function initDisplay() {
 	stopButton: document.getElementById("stopButton"),
 	waypointButton: document.getElementById("waypointButton"),
 	uploadButton: document.getElementById("uploadButton"),
+	settingsButton: document.getElementById("settingsButton"),
 	observations: document.getElementById("observations"),
 	elapsed: document.getElementById("elapsed"),
 	distance: document.getElementById("distance")
@@ -167,11 +180,13 @@ function setButtons(state) {
 	enable(g_display.startButton);
 	disable(g_display.waypointButton);
 	disable(g_display.stopButton);
+	enable(g_display.settingsButton);
 	break;
     case "running":
 	disable(g_display.startButton);
 	enable(g_display.waypointButton);
 	enable(g_display.stopButton);
+	disable(g_display.settingsButton);
     }
     enableUpload();
 }
@@ -238,26 +253,56 @@ function elapsedTimeSince(t) {
 //
 // Preferences.
 
+var g_settings = null;
 var g_device;
-var g_userid;
-var g_passwd;
+var g_userName;
+var g_password;
+
+function hasUserAndPassword() {
+    initSettings();
+    return g_settings.getItem("userName") && g_settings.getItem("password");
+}
 
 function deviceName() {
+    if (g_device)
+	return g_device;
+
+    initSettings();
+    g_device = g_settings.getItem("deviceName");
     if (!g_device)
-	g_device = "slartibartfast"; // FIXME
+	g_device = "unknown";
+
     return g_device;
 }
 
 function userName() {
-    if (!g_userid)
-	g_userid = "lth";	// FIXME
-    return g_userid;
+    if (g_userName)
+	return g_userName;
+
+    initSettings();
+    g_userName = g_settings.getItem("userName");
+    if (!g_userName)
+	onSettings();
+
+    return g_userName;
 }
 
 function password() {
-    if (!g_passwd)
-	g_passwd = "qumquat";	// FIXME
-    return g_passwd;
+    if (g_password)
+	return g_password;
+
+    initSettings();
+    g_password = g_settings.getItem("password");
+    if (!g_password)
+	onSettings();
+
+    return g_password;
+}
+
+function initSettings() {
+    if (g_settings)
+	return;
+    g_settings = localstorage;
 }
 
 //////////////////////////////////////////////////////////////////////

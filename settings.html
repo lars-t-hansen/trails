@@ -1,0 +1,55 @@
+<!-- Copyright 2015 Lars T Hansen.
+     Licensed under the Mozilla Public License 2.0.  See LICENSE for more. -->
+
+<html>
+  <head>
+    <script src="trails-client-settings.js"></script>
+    <title>Trails</title>
+  </head>
+  <body onload="initialize()" style="width: 100%">
+    <!-- These are device settings, so mobile friendly -->
+
+    <!-- Probably want just some vertically stacked fields and cancel/save buttons.
+	 Either button takes us back to the main page, probably - maybe with
+	 a warning if user/pass are not set. -->
+
+    <!-- Maybe check user name and password with the server (need
+	 rate-limited function for that on server to avoid attacks,
+	 but I guess in some sense every function needs to be
+	 rate-limited - rate limitation kicks in for incorrect
+	 attempts, perhaps, but keyed how?) -->
+
+    <!-- In order to enable offline use, do not *require* values here,
+	 allow the user to go back to the app without entering
+	 anything.  And do not depend on user/password to be correct,
+	 and do not require a network to be present, instead perhaps
+	 add a "Check login" function that will do it. -->
+
+    <!-- username
+	 password
+	 device name (user chosen)
+	 device hardware (probably user chosen)
+	 device operating systems (get from UA string, prefill)
+	 user agent (get from UA string, prefill) -->
+
+    <div>&nbsp;</div>
+    <div>
+      <button id="waypointButton" onclick="onWaypoint()" style="width: 100%; height: 20%; font-size: 10vw">Waypoint</button>
+    </div>
+    <div>&nbsp;</div>
+    <div>
+      <button id="uploadButton" onclick="onUpload()" style="width: 100%; height: 15%; font-size: 8vw">Upload</button>
+    </div>
+    <div>&nbsp;</div>
+    <div style="font-size: 5vw">
+      <div>Observations: <span id="observations"></span></div>
+      <div>Elapsed time: <span id="elapsed"></span></div>
+      <div>Distance: <span id="distance"></span></div>
+    </div>
+
+    <div>
+      <button id="saveButton" onclick="onSave()" style="width: 49%; height: 10%; font-size: 7vw">Save</button>
+      <button id="cancelButton" onclick="onCancel()" style="width: 49%; height: 10%; font-size: 7vw">Cancel</button>
+    </div>
+  </body>
+</html>

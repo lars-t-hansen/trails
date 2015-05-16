@@ -16,6 +16,9 @@ const g_if = "0.0.0.0";
 const g_port = 9003;
 const g_default = "trails.html";
 const g_DEBUG = true;
+const g_plotHeight = 600;   // Customize
+const g_plotWidth = 600;    //   to the UA?
+
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -64,7 +67,7 @@ function requestHandler(req, res) {
 		    simpleTextResponse(res, 403, "Bad user or password");
 		    return;
 		}
-		servePlot(res, user, params);
+		servePlot(req, res, user, params);
 		return;
 	    }
 	    break;
@@ -104,6 +107,10 @@ function simpleTextResponse(res, code, message) {
 function logError(error) {
     console.log(error);
 }
+
+/////////////////////////////////////////////////////////////////////
+//
+// Data input and validation.
 
 function receiveTrail(req, res, user) {
     var bodyData = "";
@@ -291,9 +298,99 @@ function validateTrail(t) {
 // and options on how to plot (initially none).  This would deliver an
 // HTML document with SVG.
 
-function servePlot(res, user, parameters) {
-    // Implementme
-    simpleTextResponse(res, 200, "OK");
+function servePlot(req, res, user, parameters) {
+    try {
+	var trails = [];
+
+	// TODO: process parameters to get trail names, then load those trails
+	// into the trails array.
+
+	var plot = plotTrails(g_plotHeight, g_plotWidth, trails);
+	res.writeHead(code, {"Content-Type": "text/html"});
+	res.end('<html>\n<body>\n' + plot + '</body>\n</html>');
+    }
+    catch (e) {
+	serverFailure(req, res);
+    }
+}
+
+// Given a number of trails, return SVG subcommands that draw all the
+// trails within the same grid.
+//
+// TODO: it's anyone's guess if this works where latitude or longitude
+// are negative.
+
+function plotTrails(height, width, trails) {
+    var lat_min = Number.POSITIVE_INFINITY;
+    var lat_max = Number.NEGATIVE_INFINITY;
+    var lon_min = Number.POSITIVE_INFINITY;
+    var lon_max = Number.NEGATIVE_INFINITY;
+
+    for ( var t=0 ; t < trails.length ; t++ ) {
+	var rs = trails[t].readings;
+	for ( var i=0 ; i < rs.length ; i++ ) {
+            var r = rs[i];
+            lat_min = Math.min(lat_min, r[0]);
+            lat_max = Math.max(lat_max, r[0]);
+            lon_min = Math.min(lon_min, r[1]);
+            lon_max = Math.max(lon_max, r[1]);
+	}
+    }
+
+    var lon_range = lon_max - lon_min;
+    var lat_range = lat_max - lat_min;
+
+    // Scale for non-square drawing surface first.
+
+    var scale_lat = Math.min(1, width/height);
+    var scale_lon = Math.min(1, height/width);
+
+    // Scale for position on the earth second.
+    //
+    // The unit of measurement is a unit length along the y axis
+    // (along the longitude), this value is everywhere the same.
+    //
+    // So the x measurements have to be scaled by the factor x_unit /
+    // y_unit, where x_unit is a unit length along the x axis, at a
+    // given latitude.
+
+    var unit_y = distanceBetween(0, 0, 1, 0);
+    var unit_x = distanceBetween(lat_min, Math.floor(lon_min), lat_min, Math.floor(lon_min)+1);
+
+    scale_lon *= unit_x / unit_y;
+
+    var polys = [];
+    for ( var t=0 ; t < trails.length ; t++ ) {
+	var rs = trails[t].readings;
+
+	var poly = "";
+	for ( var i=0 ; i < rs.length ; i++ ) {
+            var r = rs[i];
+            if (poly != "")
+		poly += ", ";
+            var lon = Math.round((r[1] - lon_min) / lon_range * width * scale_lon);
+            var lat = height - Math.round((r[0] - lat_min) / lat_range * height * scale_lat);
+            poly += lon + " " + lat;
+	}
+	// TODO: different colors.  There are 147 named colors to choose from, though not
+	// all are suitable.  http://www.december.com/html/spec/colorsvg.html
+	var color = "green";
+	polys.push('<polyline points="' + poly + '" fill="transparent" stroke="' + color + '"/>');
+    }
+
+    return '<svg width="' + width + '" + height="' + height + '">' + polys.join('\n') + '\n</svg>';
+}
+
+const earth_avg_radius = 6371009.0;	// meters
+
+function distanceBetween(lat_a, lon_a, lat_b, lon_b) {
+    lat_a = (lat_a / 180) * Math.PI;
+    lon_a = (lon_a / 180) * Math.PI;
+    lat_b = (lat_b / 180) * Math.PI;
+    lon_b = (lon_b / 180) * Math.PI;
+    var delta_lon = Math.abs(lon_a - lon_b);
+    var central_angle = Math.acos(Math.sin(lat_a) * Math.sin(lat_b) + Math.cos(lat_a) * Math.cos(lat_b) * Math.cos(delta_lon));
+    return earth_avg_radius * central_angle;
 }
 
 //////////////////////////////////////////////////////////////////////
