@@ -6,6 +6,11 @@
 //
 // After setup this script calls runServer().
 
+// TODO: everyone should just submit HTTP user/password as part of the
+// request, not in the URL, since for the web client this is all wrong
+// (shows up in the URL field).  The user may still be part of the
+// URL, that would be OK.
+
 // V8 does not allow the use of const in strict mode, for whatever reason.
 // So don't use strict mode yet.
 
@@ -24,8 +29,8 @@ const g_rootdir = arg_rootdir();
 const g_port = arg_portnumber();
 const g_default = "trails.html";
 const g_DEBUG = true;
-const g_plotHeight = 600;   // Customize
-const g_plotWidth = 600;    //   to the UA?
+const g_plotHeight = 1000;   // Customize
+const g_plotWidth = 1000;    //   to the UA?
 
 function arg_rootdir() {
     var p = process.argv[1];
@@ -76,7 +81,7 @@ const filename = "[-_a-zA-Z0-9.]+";
 const post_trail_re = new RegExp("^\\/trail\\/(" + user_id + ")\\/(" + uripart + ")$");
 const resource_re = new RegExp("^\\/r\\/(" + filename + ")$");
 const default_re = new RegExp("^\\/?$");
-const plot_re = new RegExp("^\\/plot\\/(" + user_id + ")\\/(" + uripart + ")\\?(" + uripart + ")$");
+const plot_re = new RegExp("^\\/plot\\/(" + user_id + ")\\/(" + uripart + ")\\/(" + uripart + ")$");
 
 function requestHandler(req, res) {
     try {
@@ -130,12 +135,13 @@ function requestHandler(req, res) {
     }
     catch (e) {
 	console.log("Server failure at outer level: " + e);
-	serverFailure(req, res);
+	serverFailure(e, req, res);
     }
 }
 
-function serverFailure(req, res) {
+function serverFailure(e, req, res) {
     try {
+	console.log("Server failure:\n" + e);
 	simpleTextResponse(res, 500, "Internal server error - blame the programmer");
     }
     catch (e) {
@@ -200,8 +206,7 @@ function receiveTrail(req, res, user) {
 		fs.writeFileSync(g_rootdir + "data/" + user + "/new-" + Date.now() + ".json", bodyData);
 	    }
 	    catch (e) {
-		console.log("Server failure during write: " + e);
-		serverFailure(req, res);
+		serverFailure(e, req, res);
 		return;
 	    }
 
@@ -212,8 +217,7 @@ function receiveTrail(req, res, user) {
 		res.end(JSON.stringify({ uuid: parsed.uuid }));
 	}
 	catch (e) {
-	    console.log("Server failure during processing: " + e);
-	    serverFailure(req, res);
+	    serverFailure(e, req, res);
 	}
     });
 }
@@ -354,12 +358,20 @@ function servePlot(req, res, user, parameters) {
 	// TODO: process parameters to get trail names, then load those trails
 	// into the trails array.
 
+	var dir = g_rootdir + "data/" + user;
+	var files = fs.readdirSync(dir);
+
+	if (parameters == "all") {
+	    for ( var i=0 ; i < files.length ; i++ )
+		trails.push(JSON.parse(fs.readFileSync(dir + "/" + files[i])));
+	}
+
 	var plot = plotTrails(g_plotHeight, g_plotWidth, trails);
-	res.writeHead(code, {"Content-Type": "text/html"});
+	res.writeHead(200, {"Content-Type": "text/html"});
 	res.end('<html>\n<body>\n' + plot + '</body>\n</html>');
     }
     catch (e) {
-	serverFailure(req, res);
+	serverFailure(e, req, res);
     }
 }
 
@@ -372,6 +384,11 @@ function servePlot(req, res, user, parameters) {
 //
 // FIXME: This will not work if the trail crosses the 180th parallel.
 // FIXME: This may not work if the trail touches either pole.
+
+// TODO: more colors.  There are 147 named colors to choose from, though not
+// all are suitable.  http://www.december.com/html/spec/colorsvg.html
+
+const g_colors = ["green","red","blue","yellow"];
 
 function plotTrails(height, width, trails) {
     var lat_min = Number.POSITIVE_INFINITY;
@@ -413,6 +430,7 @@ function plotTrails(height, width, trails) {
     scale_lon *= unit_x / unit_y;
 
     var polys = [];
+    var nextcolor = 0;
     for ( var t=0 ; t < trails.length ; t++ ) {
 	var rs = trails[t].readings;
 
@@ -425,10 +443,7 @@ function plotTrails(height, width, trails) {
             var lat = height - Math.round((r[0] - lat_min) / lat_range * height * scale_lat);
             poly += lon + " " + lat;
 	}
-	// TODO: different colors.  There are 147 named colors to choose from, though not
-	// all are suitable.  http://www.december.com/html/spec/colorsvg.html
-	var color = "green";
-	polys.push('<polyline points="' + poly + '" fill="transparent" stroke="' + color + '"/>');
+	polys.push('<polyline points="' + poly + '" fill="transparent" stroke="' + g_colors[nextcolor++] + '"/>');
     }
 
     return '<svg width="' + width + '" + height="' + height + '">' + polys.join('\n') + '\n</svg>';
