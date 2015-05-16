@@ -1,24 +1,54 @@
 // Copyright 2015 Lars T Hansen.
 // Code for Node.js.
 //
+// Usage:
+//   node trails-server.js [--port portnumber]
+//
 // After setup this script calls runServer().
+
+// V8 does not allow the use of const in strict mode, for whatever reason.
+// So don't use strict mode yet.
 
 const http = require('http');
 const fs = require('fs');
+
+const g_defaultPort = 9003;
 
 //////////////////////////////////////////////////////////////////////
 //
 // Configuration.
 
-const g_datadir = "/home/lth/trails/";
 const g_scheme = "http";
 const g_if = "0.0.0.0";
-const g_port = 9003;
+const g_rootdir = arg_rootdir();
+const g_port = arg_portnumber();
 const g_default = "trails.html";
 const g_DEBUG = true;
 const g_plotHeight = 600;   // Customize
 const g_plotWidth = 600;    //   to the UA?
 
+function arg_rootdir() {
+    var p = process.argv[1];
+    var x = p.lastIndexOf('/');
+    if (x <= 0)			// Excludes root, I guess
+	throw new Error("Bad path");
+    return p.substring(0, x+1);
+}
+
+function arg_portnumber() {
+    var args = process.argv;
+    for ( var i=2 ; i < args.length ; i++ ) {
+	if (args[i] == "--")
+	    break;
+	if (args[i] == "--port") {
+	    var p = 0;
+	    if (i < args.length-1 && isFinite(p = parseInt(args[i+1])) && (p|0) === p && p > 0)
+		return p;
+	    throw new Error("Bad port: " + args.join(" "));
+	}
+    }
+    return g_defaultPort;
+}
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -27,12 +57,15 @@ const g_plotWidth = 600;    //   to the UA?
 function runServer() {
     if (!loadUsers())
 	return;
-    if (g_scheme != "http") {
-	console.log("Only http supported");
+    switch (g_scheme) {
+    case "http":
+	http.createServer(requestHandler).listen(g_port, g_if);
+	break;
+    default:
+	console.log("Scheme " + g_scheme " + is not supported");
 	process.exit(1);
     }
-    http.createServer(requestHandler).listen(g_port, g_if);
-    console.log("Server running at http://" + g_if + ":" + g_port + "/");
+    console.log("Server running at " + g_scheme + "://" + g_if + ":" + g_port + "/");
 }
 
 // The protocol is documented in spec.txt.
@@ -54,14 +87,17 @@ function requestHandler(req, res) {
 
 	switch (req.method) {
 	case "GET":
+	    // GET /r/filename
 	    if ((m = req.url.match(resource_re)) && (fn = resourceFile(m[1]))) {
 		serveFile(res, fn);
 		return;
 	    }
+	    // GET /
 	    if (req.url.match(default_re) && (host = req.headers.host)) {
 		simpleTextResponse(res, 301, "Moved permanently\nLocation: " + g_scheme + "://" + host + "/r/" + g_default);
 		return;
 	    }
+	    // GET /plot/user/pass/params
 	    if ((m = req.url.match(plot_re)) && (user = m[1]) && (passwd = decodeURIComponent(m[2])) && (params = decodeURIComponent(m[3]))) {
 		if (!checkUser(user, passwd)) {
 		    simpleTextResponse(res, 403, "Bad user or password");
@@ -72,6 +108,7 @@ function requestHandler(req, res) {
 	    }
 	    break;
 	case "POST":
+	    // POST /trail/user/pass
 	    if ((m = req.url.match(post_trail_re)) && (user = m[1]) && (passwd = decodeURIComponent(m[2]))) {
 		if (!checkUser(user, passwd)) {
 		    simpleTextResponse(res, 403, "Bad user or password");
@@ -148,7 +185,7 @@ function receiveTrail(req, res, user) {
 	    // TODO: Check against existing UUIDs
 	    try {
 		// FIXME: proper file name with uuid
-		fs.writeFileSync(g_datadir + "data/" + user + "/new-" + Date.now() + ".json", bodyData);
+		fs.writeFileSync(g_rootdir + "data/" + user + "/new-" + Date.now() + ".json", bodyData);
 	    }
 	    catch (e) {
 		console.log("Server failure during write: " + e);
@@ -398,7 +435,7 @@ function distanceBetween(lat_a, lon_a, lat_b, lon_b) {
 // File layer.
 
 function resourceFile(base) {
-    var fn = g_datadir + "r/" + base;
+    var fn = g_rootdir + "r/" + base;
     console.log("Trying <" + fn + "> " + fs.existsSync(fn));
     return fs.existsSync(fn) ? fn : null;
 }
@@ -453,9 +490,11 @@ var g_users = [];
 //
 // where in version 1 the passwords are in plaintext for now.
 
+// FIXME: Why is this not data/users.json?  That's what adduser.js works on.
+
 function loadUsers() {
     try {
-	var tmp = JSON.parse(fs.readFileSync(g_datadir + "users.dat"), {encoding:"utf8"});
+	var tmp = JSON.parse(fs.readFileSync(g_rootdir + "users.dat"), {encoding:"utf8"});
 	if (!tmp || typeof tmp != "object")
 	    throw new Error("users.dat: Not an object");
 	if (!tmp.hasOwnProperty("version") || tmp.version != 1)
