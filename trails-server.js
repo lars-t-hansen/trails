@@ -62,7 +62,7 @@ function runServer() {
 	http.createServer(requestHandler).listen(g_port, g_if);
 	break;
     default:
-	console.log("Scheme " + g_scheme " + is not supported");
+	console.log("Scheme " + g_scheme + " is not supported");
 	process.exit(1);
     }
     console.log("Server running at " + g_scheme + "://" + g_if + ":" + g_port + "/");
@@ -94,7 +94,8 @@ function requestHandler(req, res) {
 	    }
 	    // GET /
 	    if (req.url.match(default_re) && (host = req.headers.host)) {
-		simpleTextResponse(res, 301, "Moved permanently\nLocation: " + g_scheme + "://" + host + "/r/" + g_default);
+		res.writeHead(301, {Location: g_scheme + "://" + host + "/r/" + g_default});
+		res.end();
 		return;
 	    }
 	    // GET /plot/user/pass/params
@@ -122,7 +123,7 @@ function requestHandler(req, res) {
 	simpleTextResponse(res, 404, "Bad request");
     }
     catch (e) {
-	console.log("Server failure at outer level");
+	console.log("Server failure at outer level: " + e);
 	serverFailure(req, res);
     }
 }
@@ -355,7 +356,11 @@ function servePlot(req, res, user, parameters) {
 // trails within the same grid.
 //
 // TODO: it's anyone's guess if this works where latitude or longitude
-// are negative.
+// are negative, though I think it ought to.  Easy to test by
+// systematically biasing latitude and/or longitude for a data set.
+//
+// FIXME: This will not work if the trail crosses the 180th parallel.
+// FIXME: This may not work if the trail touches either pole.
 
 function plotTrails(height, width, trails) {
     var lat_min = Number.POSITIVE_INFINITY;

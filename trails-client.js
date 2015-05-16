@@ -302,7 +302,7 @@ function password() {
 function initSettings() {
     if (g_settings)
 	return;
-    g_settings = localstorage;
+    g_settings = localStorage;
 }
 
 //////////////////////////////////////////////////////////////////////
