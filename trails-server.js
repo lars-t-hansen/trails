@@ -31,7 +31,7 @@ function arg_rootdir() {
     var p = process.argv[1];
     var x = p.lastIndexOf('/');
     if (x <= 0)			// Excludes root, I guess
-	throw new Error("Bad path");
+	throw new Error("Bad program path: " + p);
     return p.substring(0, x+1);
 }
 
