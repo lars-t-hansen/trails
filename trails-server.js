@@ -1,7 +1,7 @@
 // -*- mode: javascript -*-
 //
 // Copyright 2015 Lars T Hansen.
-// TypeScript 1.4 code for Node.js.
+// TypeScript 1.4 code for Node.js 0.10.
 //
 // Compile:
 //   tsc typings/node/node.d.ts trails-server.ts
@@ -424,7 +424,6 @@ function distanceBetween(lat_a, lon_a, lat_b, lon_b) {
 //////////////////////////////////////////////////////////////////////
 //
 // Waypoints database.
-// Caches per-user but never clears the cache; won't scale.
 var Waypoints = (function () {
     /*private*/ function Waypoints(user, ws) {
         this.user = user;
@@ -477,6 +476,7 @@ var Waypoints = (function () {
         }
         return this.waypoints[user];
     };
+    // Caches per-user but never clears the cache; won't scale.
     Waypoints.waypoints = {};
     return Waypoints;
 })();
