@@ -12,11 +12,6 @@
 //
 // After setup this script calls runServer().
 
-// TODO: everyone should just submit HTTP user/password as part of the
-// request, not in the URL, since for the web client this is all wrong
-// (shows up in the URL field).  The user may still be part of the
-// URL, that would be OK.
-
 /// <reference path='typings/node/node.d.ts' />
 
 import http = require('http');
@@ -24,6 +19,8 @@ import fs = require('fs');
 
 import IncomingMessage = http.IncomingMessage;
 import ServerResponse = http.ServerResponse;
+
+var auth = require("basic-auth");
 
 var g_defaultPort = 9003;
 
@@ -87,14 +84,14 @@ function runServer():void {
 var user_id = "[a-zA-Z0-9]+";
 var uripart = "[-_.!~*'()a-zA-Z0-9]+";
 var filename = "[-_a-zA-Z0-9.]+";
-var post_trail_re = new RegExp("^\\/trail\\/(" + user_id + ")\\/(" + uripart + ")$");
+var post_trail_re = new RegExp("^\\/trail\\/(" + user_id + ")$");
 var resource_re = new RegExp("^\\/r\\/(" + filename + ")$");
 var default_re = new RegExp("^\\/?$");
-var plot_re = new RegExp("^\\/plot\\/(" + user_id + ")\\/(" + uripart + ")\\/(" + uripart + ")$");
+var plot_re = new RegExp("^\\/plot\\/(" + user_id + ")\\/(" + uripart + ")$");
 
 function requestHandler(req:IncomingMessage, res:ServerResponse):void {
     try {
-	var m:RegExpMatchArray, user:string, passwd:string, host:string, params:string, fn:string;
+	var m:RegExpMatchArray, user:string, host:string, params:string, fn:string;
 
 	if (g_DEBUG)
 	    console.log(req.method + " " + req.url);
@@ -113,12 +110,10 @@ function requestHandler(req:IncomingMessage, res:ServerResponse):void {
 		res.end();
 		return;
 	    }
-	    // GET /plot/user/pass/params
-	    if ((m = req.url.match(plot_re)) && (user = m[1]) && (passwd = decodeURIComponent(m[2])) && (params = decodeURIComponent(m[3]))) {
-		if (!checkUser(user, passwd)) {
-		    simpleTextResponse(res, 403, "Bad user or password");
+	    // GET /plot/user/params
+	    if ((m = req.url.match(plot_re)) && (user = m[1]) && (params = decodeURIComponent(m[2]))) {
+		if (!(user = checkAccess(req, res)))
 		    return;
-		}
 		// TODO: This requires "significant" server processing of data, which
 		// scales poorly, and node.js has no obvious way to offload this.  Even
 		// reading the data from disk may be slow and should be async.
@@ -129,12 +124,10 @@ function requestHandler(req:IncomingMessage, res:ServerResponse):void {
 	    }
 	    break;
 	case "POST":
-	    // POST /trail/user/pass
-	    if ((m = req.url.match(post_trail_re)) && (user = m[1]) && (passwd = decodeURIComponent(m[2]))) {
-		if (!checkUser(user, passwd)) {
-		    simpleTextResponse(res, 403, "Bad user or password");
+	    // POST /trail/user
+	    if ((m = req.url.match(post_trail_re)) && (user = m[1])) {
+		if (!(user = checkAccess(req, res)))
 		    return;
-		}
 		receiveTrail(req, res, user);
 		return;
 	    }
@@ -146,6 +139,18 @@ function requestHandler(req:IncomingMessage, res:ServerResponse):void {
 	console.log("Server failure at outer level: " + e);
 	serverFailure(e, req, res);
     }
+}
+
+function checkAccess(req:IncomingMessage, res:ServerResponse) {
+    var credentials = auth(req)
+    var user:string;
+
+    if (!credentials || !(user = credentials.name) || !checkUser(user, credentials.pass)) {
+	res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="trails"' });
+	res.end()
+	return null;
+    }
+    return user;
 }
 
 function serverFailure(e:Error, req:IncomingMessage, res:ServerResponse):void {
@@ -405,6 +410,11 @@ class Trail
 // and options on how to plot (initially none).  This would deliver an
 // HTML document with SVG.
 
+// There's an earlier proposal that parameters is a JSON object, eg,
+//   { trails: [uuid, ...] }
+// but that seems very elaborate right now.  On the other hand it is
+// forward compatible.
+
 function servePlot(req:IncomingMessage, res:ServerResponse, user:string, parameters:string) {
     try {
 	var trails:Trail[] = new Array<Trail>();
@@ -629,7 +639,7 @@ class Waypoints
 
 //////////////////////////////////////////////////////////////////////
 //
-// File layer.
+// File layer - not well used, currently.
 
 function resourceFile(base:string):string {
     var fn = g_rootdir + "r/" + base;
@@ -673,7 +683,7 @@ function mimeTypeFromName(name:string):string {
 
 //////////////////////////////////////////////////////////////////////
 //
-// User database.
+// User database - a singleton.
 //
 // TODO: Surely there must exist code for this already?
 

@@ -11,13 +11,10 @@
 //   node trails-server.js [--port portnumber]
 //
 // After setup this script calls runServer().
-// TODO: everyone should just submit HTTP user/password as part of the
-// request, not in the URL, since for the web client this is all wrong
-// (shows up in the URL field).  The user may still be part of the
-// URL, that would be OK.
 /// <reference path='typings/node/node.d.ts' />
 var http = require('http');
 var fs = require('fs');
+var auth = require("basic-auth");
 var g_defaultPort = 9003;
 //////////////////////////////////////////////////////////////////////
 //
@@ -72,13 +69,13 @@ function runServer() {
 var user_id = "[a-zA-Z0-9]+";
 var uripart = "[-_.!~*'()a-zA-Z0-9]+";
 var filename = "[-_a-zA-Z0-9.]+";
-var post_trail_re = new RegExp("^\\/trail\\/(" + user_id + ")\\/(" + uripart + ")$");
+var post_trail_re = new RegExp("^\\/trail\\/(" + user_id + ")$");
 var resource_re = new RegExp("^\\/r\\/(" + filename + ")$");
 var default_re = new RegExp("^\\/?$");
-var plot_re = new RegExp("^\\/plot\\/(" + user_id + ")\\/(" + uripart + ")\\/(" + uripart + ")$");
+var plot_re = new RegExp("^\\/plot\\/(" + user_id + ")\\/(" + uripart + ")$");
 function requestHandler(req, res) {
     try {
-        var m, user, passwd, host, params, fn;
+        var m, user, host, params, fn;
         if (g_DEBUG)
             console.log(req.method + " " + req.url);
         switch (req.method) {
@@ -95,12 +92,10 @@ function requestHandler(req, res) {
                     res.end();
                     return;
                 }
-                // GET /plot/user/pass/params
-                if ((m = req.url.match(plot_re)) && (user = m[1]) && (passwd = decodeURIComponent(m[2])) && (params = decodeURIComponent(m[3]))) {
-                    if (!checkUser(user, passwd)) {
-                        simpleTextResponse(res, 403, "Bad user or password");
+                // GET /plot/user/params
+                if ((m = req.url.match(plot_re)) && (user = m[1]) && (params = decodeURIComponent(m[2]))) {
+                    if (!(user = checkAccess(req, res)))
                         return;
-                    }
                     // TODO: This requires "significant" server processing of data, which
                     // scales poorly, and node.js has no obvious way to offload this.  Even
                     // reading the data from disk may be slow and should be async.
@@ -111,12 +106,10 @@ function requestHandler(req, res) {
                 }
                 break;
             case "POST":
-                // POST /trail/user/pass
-                if ((m = req.url.match(post_trail_re)) && (user = m[1]) && (passwd = decodeURIComponent(m[2]))) {
-                    if (!checkUser(user, passwd)) {
-                        simpleTextResponse(res, 403, "Bad user or password");
+                // POST /trail/user
+                if ((m = req.url.match(post_trail_re)) && (user = m[1])) {
+                    if (!(user = checkAccess(req, res)))
                         return;
-                    }
                     receiveTrail(req, res, user);
                     return;
                 }
@@ -128,6 +121,16 @@ function requestHandler(req, res) {
         console.log("Server failure at outer level: " + e);
         serverFailure(e, req, res);
     }
+}
+function checkAccess(req, res) {
+    var credentials = auth(req);
+    var user;
+    if (!credentials || !(user = credentials.name) || !checkUser(user, credentials.pass)) {
+        res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="trails"' });
+        res.end();
+        return null;
+    }
+    return user;
 }
 function serverFailure(e, req, res) {
     try {
@@ -348,6 +351,10 @@ var Trail = (function () {
 // serve up, perhaps with some keywords supported (all? latest? year?)
 // and options on how to plot (initially none).  This would deliver an
 // HTML document with SVG.
+// There's an earlier proposal that parameters is a JSON object, eg,
+//   { trails: [uuid, ...] }
+// but that seems very elaborate right now.  On the other hand it is
+// forward compatible.
 function servePlot(req, res, user, parameters) {
     try {
         var trails = new Array();
@@ -538,7 +545,7 @@ var Waypoints = (function () {
 })();
 //////////////////////////////////////////////////////////////////////
 //
-// File layer.
+// File layer - not well used, currently.
 function resourceFile(base) {
     var fn = g_rootdir + "r/" + base;
     console.log("Trying <" + fn + "> " + fs.existsSync(fn));
@@ -567,7 +574,7 @@ function mimeTypeFromName(name) {
 }
 //////////////////////////////////////////////////////////////////////
 //
-// User database.
+// User database - a singleton.
 //
 // TODO: Surely there must exist code for this already?
 var g_users = [];

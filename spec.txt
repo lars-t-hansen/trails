@@ -1,90 +1,53 @@
-Lightweight location tracker to run on a cell phone, it records a path using not too much power.
-Saves to disk.  Uploads at the press of a button.  Minimal UI.
-
-The central idea is a trail: the sequence of readings while app is tracking.
-
-Server stores trails and uses OSM data to compute distance, time, etc, there is little client-side work.
-
-Server provides a web app to interact with database of trails (maps, stats).
-
-
-Step 1: record traces and upload them.  Uploader has a REST API.
-
-POST /new/USER/PASS
-
-A trace is JSON data [this is obsolete, new info below]
-
-  { uuid:    UUID
-    version: 1
-    device:  device-name
-    start:   timestamp,
-    end:     timestamp,
-    readings: [[lat, lon], ...] }
-
-lat and lon are floating-point numbers, raw readings of latitude and longitude.
-
-The UUID allows duplicates to be rejected on the server, should they
-happen for any reason at all.  The uploader should delete a trace from
-its database only when it receives a successful response from the POST.
-
-Response codes:
-
-  OK
-  DUPLICATE - if UUID existed but data was the same
-  CONFLICT - if UUID existed and data was not the same
-
-The server should just create a new file, named perhaps new-UUID.data, if
-the response is OK.  Server code can later process these files.
-
-The server should be single-threaded, at least on a per-user basis.
-
-
 Server protocol.
 
-A USER-ID is some alphanumeric string.
-A PASSWD is some string, uriComponent-encoded.
-A PARAMETERS is some string, uriComponent-encoded.
+A FILENAME matches [-_a-zA-Z0-9.]+
+A USER-ID matches [a-zA-Z0-9]+
+A PASSWD matches [-_.!~*'()a-zA-Z0-9]+ before decoding (it is uriComponent-encoded) [v1 only]
+A PARAMETERS matches [-_.!~*'()a-zA-Z0-9]+ before decoding (it is uriComponent-encoded)
 
-Protocol:
+For protocol version 2+, HTTP authentication is used.
 
-GET /r/FILENAME
+GET /r/FILENAME              [protocol version 1+]
   Respond 200 OK with the named file if it exists.
   Note, this is for static resources.
 
-GET /plot/USER-ID/PASSWD/PARAMETERS
-  Respond 200 OK with the plot as payload if possible.
-  When decoded, PARAMETERS must be a JSON object along the following lines:
+GET /plot/USER-ID/PARAMETERS [protocol version 2+]
+  Respond 401 if the user+password are wrong or user does not exist.
+  Respond 200 OK with the plot as HTML payload if possible.
+  When decoded, PARAMETERS must match a spec TBD.
 
-  { trails: [uuid, ...] }
+  Trips are plotted together with different colors and all relevant
+  waypoints.
 
-  where uuid is either the uuid from version 2+ or the id from version 1.
-
-  Trips are plotted together with different colors and all relevant waypoints.
-  How this will look for many trips is unknown.
-
-GET /summary/USER-ID/PASSWD
+GET /summary/USER-ID        [protocol version 2+]
+  Respond 401 if the user+password are wrong or user does not exist.
   Respond 200 OK with the summary for the user (basically HTML+JS).
 
-POST /trail/USER-ID/PASSWD
+POST /trail/USER-ID/PASSWD  [protocol version 1 only]
+POST /trail/USER-ID         [protocol version 2+]
   Payload: the contents of the trail, a JSON object as outlined in
     spec.txt, notably with a UUID field.
-  Respond 404 Not found if the user does not exist.
-  Respond 404 Not found if the password is wrong.
+  Respond 401 if the user+password are wrong or user does not exist.
   Respond 409 Conflict if a record with the UUID of the datum already
     exists in the database.
   Otherwise create a new trail for the user and respond 201 Created
     with a JSON-encoded object { UUID: <uuid> } <uuid> is the input
     uuid.
 
-Files are stored in data/USER-ID:
-  summary.json contains summary data
-  <date>-<uuid>.json where date is yyyymmddhhmmss and uuid is a 16-hex-digit
-    UUID value (found in the file) is a trail.
 
-summary.json version 1:
+
+Files are stored in the directory data/USER-ID
+
+  summary.json contains summary data
+
+  waypoints.json contains waypoint data for the user
+
+  <date>-<uuid>.json where date is yyyymmddhhmmss and uuid is a 16-hex-digit
+    (uppercase only) UUID value (found in the file) is a trail.
+
+summary.json version 1 [draft status]
 
   { version: 1,
-    waypoints: [ { name: string, lat: number, lon: number }, ... ],
     data: [ { start: number,
               file: string,
               type: string,
@@ -95,11 +58,15 @@ summary.json version 1:
               waypoints: [string, ...] }, ... ] }
 
   where distance is in meters and time in seconds.  The label and
-  comment any user-assigned values (default nothing), and the type
+  comment are user-assigned values (default nothing), and the type
   is standardized, see below.  Waypoints (within a trip) is the set
   of waypoints that were found to be touched by the trip when the
   trip data were last processed.  Waypoints (overall) is the
   complete set of waypoints for this user.
+
+waypoints.json version 1:
+  { version: 1,
+    waypoints: { "waypoint name": { name: string, lat: number, lon: number } } }
 
 <date>-<uuid>.json version 1:
 
