@@ -1,7 +1,8 @@
 #!/bin/bash
 if [ ! -e r ]; then mkdir r ; fi
 if [ ! -d r ]; then echo "r exists but is not a directory"; exit 1; fi
-( cd r ; ln -s ../trails.html ../trails-client.js . )
+if [ ! -e r/trails.html ]; then ( cd r ; ln -s ../trails.html ); fi
+if [ ! -e r/trails-client.js ]; then ( cd r ; ln -s ../trails-client.js ); fi
 if [ ! -e data ]; then mkdir data ; fi
 if [ ! -d data ]; then echo "data exists but is not a directory"; exit 1; fi
 if [ ! -e data/users.json ]; then echo '{ "version": 1, "users": [] }' > data/users.json ; fi

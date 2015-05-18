@@ -7,6 +7,8 @@
 //
 // TODO: not terribly safe to specify the password on the command line,
 // it's better to read it from the console.
+//
+// TODO: Must add data/users/waypoints.json
 
 const fs = require('fs');
 const args = process.argv.slice(2);
