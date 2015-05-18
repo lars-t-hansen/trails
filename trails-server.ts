@@ -1,10 +1,11 @@
 // -*- mode: javascript -*-
 //
 // Copyright 2015 Lars T Hansen.
-// TypeScript 1.4 code for Node.js 0.10.
+//
+// TypeScript 1.4 code for Node.js 0.10
 //
 // Compile:
-//   tsc typings/node/node.d.ts trails-server.ts
+//   tsc -t ES5 -m commonjs trails-server.ts
 //
 // Run:
 //   node trails-server.js [--port portnumber]
@@ -16,8 +17,13 @@
 // (shows up in the URL field).  The user may still be part of the
 // URL, that would be OK.
 
-var http = require('http');
-var fs = require('fs');
+/// <reference path='typings/node/node.d.ts' />
+
+import http = require('http');
+import fs = require('fs');
+
+import IncomingMessage = http.IncomingMessage;
+import ServerResponse = http.ServerResponse;
 
 var g_defaultPort = 9003;
 
@@ -35,7 +41,7 @@ var g_plotHeight = 1000;   // Customize
 var g_plotWidth = 1000;    //   to the UA?
 var g_proximity = 150;
 
-function arg_rootdir() {
+function arg_rootdir():string {
     var p = process.argv[1];
     var x = p.lastIndexOf('/');
     if (x <= 0)			// Excludes root, I guess
@@ -43,7 +49,7 @@ function arg_rootdir() {
     return p.substring(0, x+1);
 }
 
-function arg_portnumber() {
+function arg_portnumber():number {
     var args = process.argv;
     for ( var i=2 ; i < args.length ; i++ ) {
 	if (args[i] == "--")
@@ -62,7 +68,7 @@ function arg_portnumber() {
 //
 // Protocol layer.
 
-function runServer() {
+function runServer():void {
     if (!loadUsers())
 	return;
     switch (g_scheme) {
@@ -86,9 +92,9 @@ var resource_re = new RegExp("^\\/r\\/(" + filename + ")$");
 var default_re = new RegExp("^\\/?$");
 var plot_re = new RegExp("^\\/plot\\/(" + user_id + ")\\/(" + uripart + ")\\/(" + uripart + ")$");
 
-function requestHandler(req, res) {
+function requestHandler(req:IncomingMessage, res:ServerResponse):void {
     try {
-	var m, user, passwd, host, params, fn;
+	var m:RegExpMatchArray, user:string, passwd:string, host:string, params:string, fn:string;
 
 	if (g_DEBUG)
 	    console.log(req.method + " " + req.url);
@@ -142,22 +148,22 @@ function requestHandler(req, res) {
     }
 }
 
-function serverFailure(e, req, res) {
+function serverFailure(e:Error, req:IncomingMessage, res:ServerResponse):void {
     try {
 	console.log("Server failure:\n" + e);
 	simpleTextResponse(res, 500, "Internal server error - blame the programmer");
     }
     catch (e) {
-	try { req.connection.destroy(); } catch (e) { /* Oh well */ }
+	try { req.socket.destroy(); } catch (e) { /* Oh well */ }
     }
 }
 
-function simpleTextResponse(res, code, message) {
+function simpleTextResponse(res:ServerResponse, code:number, message:string):void {
     res.writeHead(code, {"Content-Type": "text/plain"});
     res.end(message);
 }
 
-function logError(error) {
+function logError(error:Error):void {
     console.log(error);
 }
 
@@ -165,21 +171,21 @@ function logError(error) {
 //
 // Data input and validation.
 
-function receiveTrail(req, res, user) {
+function receiveTrail(req:IncomingMessage, res:ServerResponse, user:string) {
     var bodyData = "";
 
     // TODO: error handling on receipt?
-    req.on("data", function (data) {
+    req.on("data", function (data:string):void {
 	try {
 	    bodyData += data;
 	    // 10MB should be plenty, but we'll see.
 	    if (bodyData.length > 1e7)
-		req.connection.destroy();
+		req.socket.destroy();
 	}
 	catch (e) { /* Anything useful to do here? */ }
     });
 
-    req.on("end", function () {
+    req.on("end", function ():void {
 	try {
 	    if (g_DEBUG) {
 		console.log("Received data:")
@@ -193,13 +199,13 @@ function receiveTrail(req, res, user) {
 	    // the synchronous write).
 
 	    try {
-		var parsed = JSON.parse(bodyData);
+		var parsed = Trail.unmarshal(bodyData);
 	    }
 	    catch (e) {
 		simpleTextResponse(res, 400, "Malformed data (not JSON)");
 		return;
 	    }
-	    if (!validateTrail(parsed)) {
+	    if (!parsed.validate()) {
 		simpleTextResponse(res, 400, "Malformed data (bad format)");
 		return;
 	    }
@@ -225,123 +231,168 @@ function receiveTrail(req, res, user) {
     });
 }
 
-function validateTrail(t) {
-    if (!t || typeof t != "object")
-	return false;
+class Trail
+{
+    /*private*/ constructor(private t:any) {}
 
-    if (!validatePositiveInt(t.version))
-	return false;
-
-    switch (t.version) {
-    case 1:
-	return (typeof t.id == "string" &&
-		t.id.match(/^[A-Fa-f0-9]+$/) &&
-		typeof t.device == "string" &&
-		validateFinite(t.start) &&
-		validateFinite(t.end) &&
-		0 <= t.start && t.start <= t.end &&
-		validateFinite(t.distance) &&
-		t.distance >= 0 &&
-		(!t.waypoints || validateWaypoints(t.waypoints)) &&
-		validateReadings(t.readings));
-
-    case 2:
-	return (typeof t.uuid == "string" &&
-		t.uuid.match(/^[A-F0-9]{16}$/) &&
-		validateDevice(t.device) &&
-		validateFinite(t.start) &&
-		validateFinite(t.end) &&
-		0 <= t.start && t.start <= t.end &&
-		validateFinite(t.distance) &&
-		t.distance >= 0 &&
-		validateType(t.type) &&
-		validateWaypoints(t.waypoints) &&
-		validateReadings(t.readings));
-
-    default:
-	return false;
+    static unmarshal(bodyData:string):Trail {
+	return new Trail(JSON.parse(bodyData));
     }
 
-    function validateType(ty) {
-	if (typeof ty != "string")
+    validate():boolean {
+	return this.validateTrail(this.t);
+    }
+
+    get version(): number {
+	return this.t.version;
+    }
+
+    get id(): string {
+	if (this.t.version == 1)
+	    return this.t.id;
+	throw new Error("Do not request 'id' from new data");
+    }
+
+    get uuid(): string {
+	if (this.t.version >= 2)
+	    return this.t.uuid;
+	// Old, bogus UUID format
+	var id = this.t.id;
+	if (id.length > 16)
+	    return id.substring(0,16);
+	if (id.length < 16)
+	    return Math.pow(10,16-id.length).toString().substring(1) + id.toUpperCase();
+	return id;
+    }
+
+    get readings(): any[] {
+	return this.t.readings;
+    }
+
+    get waypoints():any[] {
+	if ("waypoints" in this.t)
+	    return this.t.waypoints;
+	return [];
+    }
+
+    private validateTrail(t) {
+	if (!t || typeof t != "object")
 	    return false;
 
-	switch (ty) {
-	case "bike":
-	case "walk":
-	case "hike":
-	case "other":
-	    return t.version >= 2;
+	if (!validatePositiveInt(t.version))
+	    return false;
+
+	switch (t.version) {
+	case 1:
+	    return (typeof t.id == "string" &&
+		    t.id.match(/^[A-Fa-f0-9]+$/) &&
+		    typeof t.device == "string" &&
+		    validateFinite(t.start) &&
+		    validateFinite(t.end) &&
+		    0 <= t.start && t.start <= t.end &&
+		    validateFinite(t.distance) &&
+		    t.distance >= 0 &&
+		    (!t.waypoints || validateWaypoints(t.waypoints)) &&
+		    validateReadings(t.readings));
+
+	case 2:
+	    return (typeof t.uuid == "string" &&
+		    t.uuid.match(/^[A-F0-9]{16}$/) &&
+		    validateDevice(t.device) &&
+		    validateFinite(t.start) &&
+		    validateFinite(t.end) &&
+		    0 <= t.start && t.start <= t.end &&
+		    validateFinite(t.distance) &&
+		    t.distance >= 0 &&
+		    validateType(t.type) &&
+		    validateWaypoints(t.waypoints) &&
+		    validateReadings(t.readings));
+
 	default:
 	    return false;
 	}
-    }
 
-    function validateDevice(x) {
-	if (!x || typeof x != "object")
-	    return false;
-
-	return (typeof x.name == "string" &&
-		typeof x.hardware == "string" &&
-		typeof x.os == "string" &&
-		typeof x.ua == "string");
-    }
-
-    function validateWaypoints(ws) {
-	return validateDenseArray(ws, validateWaypoint);
-    }
-
-    function validateWaypoint(x) {
-	if (!x || typeof x != "object")
-	    return false;
-
-	return (typeof x.name == "string" &&
-		validateLatLon(x.lat) &&
-		validateLatLon(x.lon));
-    }
-
-    function validateReadings(rs) {
-	return validateDenseArray(rs, validateReading);
-    }
-
-    function validateReading(x) {
-	if (!validateDenseArray(x) || x.length < 2)
-	    return false;
-	if (!(validateLatLon(x[0]) && validateLatLon(x[1])))
-	    return false;
-	if (t.version >= 2)
-	    if (x.length < 3 || !validateFinite(x[2]) || x[2] < 0)
+	function validateType(ty):boolean {
+	    if (typeof ty != "string")
 		return false;
-	return true;
-    }
 
-    function validateDenseArray(xs, predicate=undefined) {
-	if (!validatePositiveInt(xs.length))
-	    return false;
-	for ( var i=0 ; i < xs.length ; i++ ) {
-	    if (!(i in xs))
+	    switch (ty) {
+	    case "bike":
+	    case "walk":
+	    case "hike":
+	    case "other":
+		return t.version >= 2;
+	    default:
 		return false;
-	    if (predicate !== undefined)
-		if (!predicate(xs[i]))
-		    return false;
+	    }
 	}
-	return true;
-    }
 
-    function validateLatLon(x) {
-	return validateFinite(x) && x >= -90.0 && x <= 90.0;
-    }
+	function validateDevice(x) {
+	    if (!x || typeof x != "object")
+		return false;
 
-    function validatePositiveInt(x) {
-	if (!validateFinite(x))
-	    return false;
-	if (Math.floor(x) != x || x < 0)
-	    return false;
-	return true;
-    }
+	    return (typeof x.name == "string" &&
+		    typeof x.hardware == "string" &&
+		    typeof x.os == "string" &&
+		    typeof x.ua == "string");
+	}
 
-    function validateFinite(x) {
-	return typeof x == "number" && isFinite(x) && !isNaN(x);
+	function validateWaypoints(ws) {
+	    return validateDenseArray(ws, validateWaypoint);
+	}
+
+	function validateWaypoint(x) {
+	    if (!x || typeof x != "object")
+		return false;
+
+	    return (typeof x.name == "string" &&
+		    validateLatLon(x.lat) &&
+		    validateLatLon(x.lon));
+	}
+
+	function validateReadings(rs) {
+	    return validateDenseArray(rs, validateReading);
+	}
+
+	function validateReading(x) {
+	    if (!validateDenseArray(x) || x.length < 2)
+		return false;
+	    if (!(validateLatLon(x[0]) && validateLatLon(x[1])))
+		return false;
+	    if (t.version >= 2)
+		if (x.length < 3 || !validateFinite(x[2]) || x[2] < 0)
+		    return false;
+	    return true;
+	}
+
+	function validateDenseArray(xs, predicate=undefined) {
+	    if (!validatePositiveInt(xs.length))
+		return false;
+	    for ( var i=0 ; i < xs.length ; i++ ) {
+		if (!(i in xs))
+		    return false;
+		if (predicate !== undefined)
+		    if (!predicate(xs[i]))
+			return false;
+	    }
+	    return true;
+	}
+
+	function validateLatLon(x) {
+	    return validateFinite(x) && x >= -90.0 && x <= 90.0;
+	}
+
+	function validatePositiveInt(x) {
+	    if (!validateFinite(x))
+		return false;
+	    if (Math.floor(x) != x || x < 0)
+		return false;
+	    return true;
+	}
+
+	function validateFinite(x) {
+	    return typeof x == "number" && isFinite(x) && !isNaN(x);
+	}
     }
 }
 
@@ -354,9 +405,9 @@ function validateTrail(t) {
 // and options on how to plot (initially none).  This would deliver an
 // HTML document with SVG.
 
-function servePlot(req, res, user, parameters) {
+function servePlot(req:IncomingMessage, res:ServerResponse, user:string, parameters:string) {
     try {
-	var trails = [];
+	var trails:Trail[] = new Array<Trail>();
 
 	var dir = g_rootdir + "data/" + user;
 	var files = fs.readdirSync(dir);
@@ -366,13 +417,13 @@ function servePlot(req, res, user, parameters) {
 
 	// TODO: plotting parameters, eg, grid size.
 
-	var re;
+	var re:RegExp;
 	if (parameters == "all")
 	    re = /^\d{14}-[0-9A-Za-z]{16}.json$/;
 	else {
 	    var ps = parameters.split(",");
 	    for ( var i=0 ; i < ps.length ; i++ ) {
-		if (!ps.match(/^[0-9A-Za-z]{16}$/))
+		if (!ps[i].match(/^[0-9A-Za-z]{16}$/))
 		    throw new Error("Bad UUID");
 	    }
 	    re = new RegExp("^(" + ps.join("|") + ")$");
@@ -380,7 +431,7 @@ function servePlot(req, res, user, parameters) {
 	if (re) {
 	    for ( var i=0 ; i < files.length ; i++ )
 		if (files[i].match(re))
-		    trails.push(JSON.parse(fs.readFileSync(dir + "/" + files[i], {encoding:"utf8"})));
+		    trails.push(Trail.unmarshal(fs.readFileSync(dir + "/" + files[i], {encoding:"utf8"})));
 	}
 
 	var plot = plotTrails(g_plotHeight, g_plotWidth, user, trails);
@@ -407,12 +458,11 @@ function servePlot(req, res, user, parameters) {
 
 var g_colors = ["green","red","blue","yellow"];
 
-function plotTrails(height, width, user, trails) {
+function plotTrails(height:number, width:number, user:string, trails:Trail[]):string {
     var ws = Waypoints.getForUser(user);
 
     for ( var t=0 ; t < trails.length ; t++ )
-	if ("waypoints" in trails[t])
-	    ws.update(trails[t].waypoints);
+	ws.update(trails[t].waypoints);
     ws.save();
 
     var lat_min = Number.POSITIVE_INFINITY;
@@ -503,7 +553,7 @@ function plotTrails(height, width, user, trails) {
 
 var earth_avg_radius = 6371009.0;	// meters
 
-function distanceBetween(lat_a, lon_a, lat_b, lon_b) {
+function distanceBetween(lat_a:number, lon_a:number, lat_b:number, lon_b:number):number {
     lat_a = (lat_a / 180) * Math.PI;
     lon_a = (lon_a / 180) * Math.PI;
     lat_b = (lat_b / 180) * Math.PI;
@@ -522,14 +572,9 @@ class Waypoints
     private dirty = false;
     private sorted = false;
 
-    /*private*/ constructor(private user, private ws) {
-	this.user = user;
-	this.ws = ws;
-	this.dirty = false;
-	this.sorted = false;
-    }
+    /*private*/ constructor(private user, private ws) {}
 
-    update(added) {
+    update(added:any[]):void {
 	var waypoints = this.ws.waypoints;
 
 	for ( var i=0 ; i < added.length ; i++ ) {
@@ -542,14 +587,14 @@ class Waypoints
 	}
     }
 
-    save() {
+    save():void {
 	if (!this.dirty)
 	    return;
 	fs.writeFileSync(g_rootdir + "data/" + this.user + "/waypoints.json", JSON.stringify(this.ws));
 	this.dirty = false;
     }
 
-    findClose(lat, lon) {
+    findClose(lat:number, lon:number):any {
 	var waypoints = this.ws.waypoints;
 
 	var closest = null;
@@ -571,7 +616,7 @@ class Waypoints
 
     private static waypoints = {};
 
-    static getForUser(user) {
+    static getForUser(user:string):any {
 	if (!this.waypoints[user]) {
 	    var ws = JSON.parse(fs.readFileSync(g_rootdir + "data/" + user + "/waypoints.json", {encoding:"utf8"}))
 	    var o = new Waypoints(user, ws);
@@ -586,13 +631,13 @@ class Waypoints
 //
 // File layer.
 
-function resourceFile(base) {
+function resourceFile(base:string):string {
     var fn = g_rootdir + "r/" + base;
     console.log("Trying <" + fn + "> " + fs.existsSync(fn));
     return fs.existsSync(fn) ? fn : null;
 }
 
-function serveFile(res, filename) {
+function serveFile(res:ServerResponse, filename:string):void {
     var data = fs.readFileSync(filename, {encoding:"utf8"});
     res.writeHead(200, {"Content-Type": mimeTypeFromName(filename)});
     res.end(data);
@@ -602,16 +647,11 @@ function serveFile(res, filename) {
 //
 // Utilities.
 
-interface String {
-    endsWith(s:string): boolean;
+function endsWith(x, s):boolean {
+    if (s.length > x.length)
+	return false;
+    return x.substring(x.length-s.length) == s;
 }
-
-if (!String.prototype.endsWith)
-    String.prototype.endsWith = function (s) {
-	if (s.length > this.length)
-	    return false;
-	return this.substring(this.length-s.length) == s;
-    };
 
 var mimetypes =
     { ".html": "text/html",
@@ -624,9 +664,9 @@ var mimetypes =
 
 var default_mimetype = "application/octet-stream";
 
-function mimeTypeFromName(name) {
+function mimeTypeFromName(name:string):string {
     for ( var pattern in mimetypes )
-	if (name.endsWith(pattern))
+	if (endsWith(name, pattern))
 	    return mimetypes[pattern];
     return default_mimetype;
 }
@@ -646,7 +686,7 @@ var g_users = [];
 //
 // where in version 1 the passwords are in plaintext for now.
 
-function loadUsers() {
+function loadUsers():boolean {
     try {
 	var tmp = JSON.parse(fs.readFileSync(g_rootdir + "data/users.json", {encoding:"utf8"}));
 	if (!tmp || typeof tmp != "object")
@@ -679,7 +719,7 @@ function loadUsers() {
 
 // Return true or false.
 
-function checkUser(user, passwd) {
+function checkUser(user:string, passwd:string):boolean {
     for ( var i=0 ; i < g_users.length ; i++ ) {
 	var x = g_users[i];
 	if (x.user === user) {
