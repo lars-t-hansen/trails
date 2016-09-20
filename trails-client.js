@@ -9,6 +9,7 @@ var g_distance;
 var g_watcher;
 var g_running;
 var g_server;
+var g_type;
 
 function initialize() {
     if (!hasUserAndPassword())
@@ -23,6 +24,7 @@ function onStart() {
     g_startTime = Date.now();
     g_readings = [];
     g_waypoints = [];
+    g_type = "other";
     g_distance = 0;
     g_watcher = navigator.geolocation.watchPosition(recordPosition,
 						    function () { return true },
@@ -38,13 +40,14 @@ function onStop() {
     g_running = false;
     g_watcher = -1;
     var trail =
-	{ id: makeUUID(),
-	  version: 1,
-	  device: deviceName(),
+	{ uuid: generateUUID(),
+	  version: 2,
+	  device: { name: deviceName(), hardware: hardwareName(), os: osName(), ua: uaString() },
 	  start: g_startTime,
 	  end: endTime,
 	  distance: g_distance,
 	  waypoints: g_waypoints,
+	  type: g_type,
 	  readings: g_readings };
     appendRecord(JSON.stringify(trail));
     g_readings = null;
@@ -108,7 +111,7 @@ function recordPosition(position) {
 	// also do the endpoints.
 	g_distance += distanceBetween(last[0], last[1], lat, lon);
     }
-    g_readings.push([lat, lon]);
+    g_readings.push([lat, lon, Date.now() - g_startTime]);
     updateDisplay();
 }
 
@@ -149,10 +152,20 @@ function sendRecord(r, onSuccess, onFailure) {
     req.send(r);
 }
 
-function makeUUID() {
-    // Hack
-    return Math.round(Math.random()*Date.now()).toString(16);
-}
+// We don't need a very high-quality UUID, this is probably good enough.
+//
+// http://stackoverflow.com/questions/105034/create-guid-uuid-in-javascript
+// License: cc by-sa 3.0 license, see that page for author information.
+
+function generateUUID(){
+    var d = new Date().getTime();
+    var uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = (d + Math.random()*16)%16 | 0;
+        d = Math.floor(d/16);
+        return (c=='x' ? r : (r&0x3|0x8)).toString(16);
+    });
+    return uuid;
+};
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -273,6 +286,18 @@ function deviceName() {
 	g_device = "unknown";
 
     return g_device;
+}
+
+function hardwareName() {
+    return "unknown";
+}
+
+function osName() {
+    return "unknown";
+}
+
+function uaString() {
+    return navigator.userAgent;
 }
 
 function userName() {
